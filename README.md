@@ -1,3 +1,3 @@
 # LatentDA
 
-ABCIでrun_cifar-10_full1.shを実行
+ABCIでrun_cifar10_full1.shを実行
