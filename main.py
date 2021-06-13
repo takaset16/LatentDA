@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--batch_size_variance', type=int, default=256)
     parser.add_argument('--flag_als', type=int, default=0)
     parser.add_argument('--als_rate', type=float, default=0)
+    parser.add_argument('--epoch_random', type=int, default=0)
     args = parser.parse_args()
 
     main_model = main_nn.MainNN(loop=args.loop,
@@ -89,7 +90,8 @@ def main():
                                 flag_var=args.flag_var,
                                 batch_size_variance=args.batch_size_variance,
                                 flag_als=args.flag_als,
-                                als_rate=args.als_rate
+                                als_rate=args.als_rate,
+                                epoch_random=args.epoch_random
                                 )
     main_model.run_main()
 

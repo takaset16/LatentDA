@@ -13,7 +13,7 @@ class MainNN(object):
                  n_model, opt, save_file, show_params, save_images, flag_acc5, flag_horovod, cutout, n_aug,
                  flag_myaug_training, flag_myaug_test, flag_dropout, flag_transfer, flag_randaug, rand_n, rand_m, flag_lars, lb_smooth, flag_lr_schedule,
                  flag_warmup, layer_aug, layer_drop, flag_random_layer, save_maps,
-                 flag_traintest, flag_var, batch_size_variance, flag_als, als_rate):
+                 flag_traintest, flag_var, batch_size_variance, flag_als, als_rate, epoch_random):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
@@ -58,7 +58,7 @@ class MainNN(object):
         self.flag_warmup = flag_warmup  # Warmup
         self.flag_dropout = flag_dropout  # Dropout
 
-        """FeatureMapAugmentation関連"""
+        """LatentDA関連"""
         self.layer_aug = layer_aug
         self.layer_drop = layer_drop
         self.flag_random_layer = flag_random_layer
@@ -77,6 +77,7 @@ class MainNN(object):
         self.num_layer = 0
         self.als_rate = als_rate
         self.layer_rate_all = None
+        self.epoch_random = epoch_random
 
     def run_main(self):
         if self.flag_horovod == 1:
@@ -378,6 +379,7 @@ class MainNN(object):
 
         """ALS"""
         layer_rate = np.zeros(self.num_layer)
+        func_sign_random = np.zeros(self.num_layer)
         if self.flag_als == 1:
             sum = 0
             for i in range(self.num_layer - 1):
@@ -444,7 +446,7 @@ class MainNN(object):
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
 
                     loss_training_before = criterion.forward(outputs_als, labels_als)
-                    loss_training_before_all += loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計を足していく
+                    loss_training_before_all = loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計
 
                 steps += 1
                 if np.array(images.data).ndim == 3:
@@ -458,8 +460,15 @@ class MainNN(object):
 
                 layer_aug = self.layer_aug
                 layer_drop = self.layer_drop
+
+                flag_als = 0
+                if self.flag_als == 1:
+                    if epoch < self.epoch_random:
+                        flag_als = 0
+                    else:
+                        flag_als = 1
                 if self.flag_random_layer == 1:
-                    if self.flag_als == 1:
+                    if flag_als == 1:
                         layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
                     else:
                         layer_aug = np.random.randint(self.layer_aug + 1)
@@ -515,25 +524,30 @@ class MainNN(object):
 
                     """Ver1.1"""
                     delta_loss = loss_training_before_all - loss_training_after_all
-                    if delta_loss > 0:
-                        func_sign = 1
-                    elif delta_loss == 0:
-                        func_sign = 0
+                    if epoch < self.epoch_random:
+                        if delta_loss > 0:
+                            func_sign_random[layer_aug] = func_sign_random[layer_aug] + 1
                     else:
-                        func_sign = -1
-                    layer_rate[aug_layer] = layer_rate[aug_layer] + self.als_rate * func_sign
+                        if epoch == self.epoch_random and i == 0:
+                            layer_rate = func_sign_random / np.sum(func_sign_random)
 
-                    if layer_rate[aug_layer] >= 1 - self.als_rate:
-                        layer_rate[aug_layer] = 1 - self.als_rate
-                    elif layer_rate[aug_layer] <= self.als_rate:
-                        layer_rate[aug_layer] = self.als_rate
+                        if delta_loss > 0:
+                            func_sign = 1
+                        elif delta_loss == 0:
+                            func_sign = 0
+                        else:
+                            func_sign = -1
+                        layer_rate[layer_aug] = layer_rate[layer_aug] + self.als_rate * func_sign
 
-                    if i == 0:
-                        print(layer_rate)
+                        if layer_rate[layer_aug] >= 1 - self.als_rate:
+                            layer_rate[layer_aug] = 1 - self.als_rate
+                        elif layer_rate[layer_aug] <= self.als_rate:
+                            layer_rate[layer_aug] = self.als_rate
 
-                    layer_rate_sum = np.sum(layer_rate)
-                    for j in range(self.num_layer):
-                        layer_rate[j] = layer_rate[j] / layer_rate_sum
+                        if i == 0:
+                            print(layer_rate)
+
+                        layer_rate = layer_rate / np.sum(layer_rate)
 
                 self.iter += 1
 
@@ -542,7 +556,6 @@ class MainNN(object):
             if self.flag_als == 1:
                 self.layer_rate_all[epoch] = layer_rate
             self.aug_layer_count_all[epoch] = aug_layer_count
-            print(aug_layer_count)
 
             """Compute variance"""
             if self.flag_var == 1 and epoch == self.num_epochs - 1:
@@ -869,8 +882,8 @@ class MainNN(object):
                                results, delimiter=',')
                 else:
                     if self.flag_als == 1:
-                        np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_alsrate_%s_seed_%s_acc_%s.csv'
-                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.als_rate,
+                        np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_alsrate_%s_epochrand_%s_seed_%s_acc_%s.csv'
+                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.als_rate, self.epoch_random,
                                       self.seed, top1_avg_max),
                                    results, delimiter=',')
                     else:
@@ -894,9 +907,9 @@ class MainNN(object):
 
                 if self.flag_random_layer == 1:
                     if self.flag_als == 1:
-                        np.savetxt('results/random/layer_rate_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_seed_%s.csv'
-                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.seed),
+                        np.savetxt('results/random/layer_rate_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_seed_%s.csv'
+                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.seed),
                                    self.layer_rate_all, delimiter=',')
-                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.seed),
+                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_seed_%s.csv'
+                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.seed),
                                self.aug_layer_count_all, delimiter=',')
