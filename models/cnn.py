@@ -31,13 +31,34 @@ class ConvNet(nn.Module):
             nn.MaxPool2d(2, 2),
             nn.BatchNorm2d(64),
             nn.ReLU())
+        self.layer1_notrack = nn.Sequential(
+            nn.Conv2d(num_channel, 32, kernel_size=3),
+            # nn.BatchNorm2d(32, track_running_stats=False),
+            nn.ReLU())
+        self.layer2_notrack = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3),
+            nn.MaxPool2d(2, 2),
+            # nn.BatchNorm2d(32, track_running_stats=False),
+            nn.ReLU())
+        self.layer3_notrack = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3),
+            # nn.BatchNorm2d(64, track_running_stats=False),
+            nn.ReLU())
+        self.layer4_notrack = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3),
+            nn.MaxPool2d(2, 2),
+            # nn.BatchNorm2d(64, track_running_stats=False),
+            nn.ReLU())
         self.fc = nn.Linear(size_after_cnn * size_after_cnn * 64, num_classes)
         self.dropout = nn.Dropout(inplace=False)
 
-    def forward(self, x, y, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
+    def forward(self, x, y, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1, flag_track=1):
         if flag_aug == 1 and layer_aug == 0:
             x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        x = self.layer1(x)
+        if flag_track == 1:
+            x = self.layer1(x)
+        else:
+            x = self.layer1_notrack(x)
 
         if flag_var == 1 and layer_var == 1:
             return x, y
@@ -45,7 +66,10 @@ class ConvNet(nn.Module):
             x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
         if flag_dropout == 1 and layer_drop == 1:
             x = self.dropout(x)
-        x = self.layer2(x)
+        if flag_track == 1:
+            x = self.layer2(x)
+        else:
+            x = self.layer2_notrack(x)
 
         if flag_var == 1 and layer_var == 2:
             return x, y
@@ -53,7 +77,10 @@ class ConvNet(nn.Module):
             x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
         if flag_dropout == 1 and layer_drop == 2:
             x = self.dropout(x)
-        x = self.layer3(x)
+        if flag_track == 1:
+            x = self.layer3(x)
+        else:
+            x = self.layer3_notrack(x)
 
         if flag_var == 1 and layer_var == 3:
             return x, y
@@ -61,7 +88,10 @@ class ConvNet(nn.Module):
             x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
         if flag_dropout == 1 and layer_drop == 3:
             x = self.dropout(x)
-        x = self.layer4(x)
+        if flag_track == 1:
+            x = self.layer4(x)
+        else:
+            x = self.layer4_notrack(x)
 
         if flag_var == 1 and layer_var == 4:
             return x, y

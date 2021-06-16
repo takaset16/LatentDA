@@ -440,7 +440,7 @@ class MainNN(object):
                     labels_als = labels_als_origin.to(device)
 
                     outputs_als, labels_als = model(x=images_als, y=labels_als, flag_aug=0, flag_dropout=0,
-                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0)
+                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0)
 
                     if labels_als.ndim == 1:
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
@@ -476,7 +476,7 @@ class MainNN(object):
                     # layer_var = np.random.randint(self.layer_var + 1)
 
                 outputs, labels = model(x=images, y=labels, flag_aug=self.flag_myaug_training, flag_dropout=self.flag_dropout,
-                                        flag_var=0, layer_aug=layer_aug, layer_drop=layer_drop, layer_var=0)
+                                        flag_var=0, layer_aug=layer_aug, layer_drop=layer_drop, layer_var=0, flag_track=1)
 
                 if labels.ndim == 1:
                     labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # one hot表現に変換
@@ -505,7 +505,7 @@ class MainNN(object):
                     labels_als = labels_als_origin.to(device)
 
                     outputs_als, labels_als = model(x=images_als, y=labels_als, flag_aug=0, flag_dropout=0,
-                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0)
+                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0)
 
                     if labels_als.ndim == 1:
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
@@ -557,191 +557,6 @@ class MainNN(object):
                 self.layer_rate_all[epoch] = layer_rate
             self.aug_layer_count_all[epoch] = aug_layer_count
 
-            """Compute variance"""
-            if self.flag_var == 1 and epoch == self.num_epochs - 1:
-                num_position = 0
-                if self.n_model == 'CNN':
-                    num_position = 5
-                elif self.n_model == 'WideResNet':
-                    num_position = 6
-                elif self.n_model == 'ResNet':
-                    if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-                        num_position = 5
-                    elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-                        num_position = 6
-
-                """feature variance for training data"""
-                feature_var_class = np.zeros(num_position)
-                feature_var = np.zeros(num_position)
-                for p in range(num_position):
-                    features = None
-                    for i, (images, labels) in enumerate(self.var_train_loader):
-                        if np.array(images.data).ndim == 3:
-                            images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                        else:
-                            images = images.to(device)
-                        labels = labels.to(device)
-
-                        if i == 0:
-                            features, _ = model(x=images, y=labels, flag_aug=0, flag_dropout=0,
-                                                flag_var=1, layer_aug=0, layer_drop=0, layer_var=p + 1)
-                            features = np.array(features.data.cpu())
-
-                    features_sum_class = None
-                    features_mean_class = None
-                    features_sum = None
-                    if features.ndim == 4:
-                        features_sum_class = np.zeros((self.num_classes, features.shape[1], features.shape[2], features.shape[3]))
-                        features_mean_class = np.zeros((self.num_classes, features.shape[1], features.shape[2], features.shape[3]))
-                        features_sum = np.zeros((features.shape[1], features.shape[2], features.shape[3]))
-                    elif features.ndim == 2:
-                        features_sum_class = np.zeros((self.num_classes, features.shape[1]))
-                        features_mean_class = np.zeros((self.num_classes, features.shape[1]))
-                        features_sum = np.zeros(features.shape[1])
-
-                    num_sum_class = np.zeros(self.num_classes)
-                    num_sum = 0
-
-                    for i, (images, labels) in enumerate(self.var_train_loader):
-                        if np.array(images.data).ndim == 3:
-                            images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                        else:
-                            images = images.to(device)
-                        labels = labels.to(device)
-
-                        features, _ = model(x=images, y=labels, flag_aug=self.flag_myaug_training, flag_dropout=0,
-                                            flag_var=1, layer_aug=self.layer_aug, layer_drop=0, layer_var=p + 1)
-                        features = np.array(features.data.cpu())
-                        labels = np.array(labels.data.cpu())
-
-                        for j in range(self.num_classes):
-                            index = np.where(labels == j)
-                            features_sum_class[j] += np.sum(features[index], axis=0)
-                            num_sum_class[j] += images[index].shape[0]
-
-                        features_sum += np.sum(features, axis=0)
-                        num_sum += images.shape[0]
-
-                    for j in range(self.num_classes):
-                        features_mean_class[j] = features_sum_class[j] / num_sum_class[j]
-
-                    features_mean = features_sum / num_sum
-
-                    feature_dif_sum_class = np.zeros(self.num_classes)
-                    feature_dif_sum = 0
-
-                    for i, (images, labels) in enumerate(self.var_train_loader):
-                        if np.array(images.data).ndim == 3:
-                            images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                        else:
-                            images = images.to(device)
-                        labels = labels.to(device)
-
-                        features, _ = model(x=images, y=labels, flag_aug=0, flag_dropout=0,
-                                            flag_var=1, layer_aug=self.layer_aug, layer_drop=0, layer_var=p + 1)  # without DA
-                        features = np.array(features.data.cpu())
-                        labels = np.array(labels.data.cpu())
-
-                        for j in range(self.num_classes):
-                            index = np.where(labels == j)
-                            # feature_dif_sum[j] += np.sum(np.power(features[index] - features_mean[j], 2))
-                            feature_dif_sum_class[j] += np.sum(np.power(features[index] - features_mean_class[j], 2)) / np.sqrt(np.sum(np.power(features[index], 2)))
-
-                        # feature_dif_sum[j] += np.sum(np.power(features[index] - features_mean[j], 2))
-                        feature_dif_sum += np.sum(np.power(features - features_mean, 2)) / np.sqrt(np.sum(np.power(features, 2)))
-
-                    feature_var_class[p] = np.mean(feature_dif_sum_class / num_sum_class)
-                    feature_var[p] = feature_dif_sum / num_sum
-
-                self.feature_var_class_train = feature_var_class
-                self.feature_var_train = feature_var
-
-                """feature variance for test data"""
-                feature_var_class = np.zeros(num_position)
-                feature_var = np.zeros(num_position)
-                for p in range(num_position):
-                    features = None
-                    for i, (images, labels) in enumerate(self.var_test_loader):
-                        if np.array(images.data).ndim == 3:
-                            images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                        else:
-                            images = images.to(device)
-                        labels = labels.to(device)
-
-                        if i == 0:
-                            features, _ = model(x=images, y=labels, flag_aug=0, flag_dropout=0,
-                                                flag_var=1, layer_aug=self.layer_aug, layer_drop=0, layer_var=p + 1)
-
-                    features = np.array(features.data.cpu())
-                    features_sum_class = None
-                    features_mean_class = None
-                    features_sum = None
-                    if features.ndim == 4:
-                        features_sum_class = np.zeros((self.num_classes, features.shape[1], features.shape[2], features.shape[3]))
-                        features_mean_class = np.zeros((self.num_classes, features.shape[1], features.shape[2], features.shape[3]))
-                        features_sum = np.zeros((features.shape[1], features.shape[2], features.shape[3]))
-                    elif features.ndim == 2:
-                        features_sum_class = np.zeros((self.num_classes, features.shape[1]))
-                        features_mean_class = np.zeros((self.num_classes, features.shape[1]))
-                        features_sum = np.zeros(features.shape[1])
-
-                    num_sum_class = np.zeros(self.num_classes)
-                    num_sum = 0
-
-                    for i, (images, labels) in enumerate(self.var_test_loader):
-                        if np.array(images.data).ndim == 3:
-                            images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                        else:
-                            images = images.to(device)
-                        labels = labels.to(device)
-
-                        features, _ = model(x=images, y=labels, flag_aug=0, flag_dropout=0,
-                                            flag_var=1, layer_aug=self.layer_aug, layer_drop=0, layer_var=p + 1)
-                        features = np.array(features.data.cpu())
-                        labels = np.array(labels.data.cpu())
-
-                        for j in range(self.num_classes):
-                            index = np.where(labels == j)
-                            features_sum_class[j] += np.sum(features[index], axis=0)
-                            num_sum_class[j] += images[index].shape[0]
-
-                        features_sum += np.sum(features, axis=0)
-                        num_sum += images.shape[0]
-
-                    for j in range(self.num_classes):
-                        features_mean_class[j] = features_sum_class[j] / num_sum_class[j]
-
-                    features_mean = features_sum / num_sum
-
-                    feature_dif_sum_class = np.zeros(self.num_classes)
-                    feature_dif_sum = 0
-
-                    for i, (images, labels) in enumerate(self.var_test_loader):
-                        if np.array(images.data).ndim == 3:
-                            images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                        else:
-                            images = images.to(device)
-                        labels = labels.to(device)
-
-                        features, _ = model(x=images, y=labels, flag_aug=0, flag_dropout=0,
-                                            flag_var=1, layer_aug=self.layer_aug, layer_drop=0, layer_var=p + 1)  # without DA
-                        features = np.array(features.data.cpu())
-                        labels = np.array(labels.data.cpu())
-
-                        for j in range(self.num_classes):
-                            index = np.where(labels == j)
-                            # feature_dif_sum[j] += np.sum(np.power(features[index] - features_mean[j], 2))
-                            feature_dif_sum_class[j] += np.sum(np.power(features[index] - features_mean_class[j], 2)) / np.sqrt(np.sum(np.power(features[index], 2)))
-
-                        # feature_dif_sum[j] += np.sum(np.power(features[index] - features_mean[j], 2))
-                        feature_dif_sum += np.sum(np.power(features - features_mean, 2)) / np.sqrt(np.sum(np.power(features, 2)))
-
-                    feature_var_class[p] = np.mean(feature_dif_sum_class / num_sum_class)
-                    feature_var[p] = feature_dif_sum / num_sum
-
-                self.feature_var_class_test = feature_var_class
-                self.feature_var_test = feature_var
-
             """テスト"""
             model.eval()
             test_loss = None
@@ -771,7 +586,7 @@ class MainNN(object):
                     if self.save_images == 1 and epoch == self.num_epochs - 1:
                         util.save_images(images)
 
-                    outputs, _ = model.forward(x=images, y=labels, flag_aug=self.flag_myaug_test, flag_dropout=0, flag_var=0)
+                    outputs, _ = model.forward(x=images, y=labels, flag_aug=self.flag_myaug_test, flag_dropout=0, flag_var=0, flag_track=1)
 
                     if self.flag_acc5 == 1:
                         acc1, acc5 = util.accuracy(outputs.data, labels.long(), topk=(1, 5))
