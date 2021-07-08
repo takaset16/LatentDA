@@ -158,8 +158,8 @@ class MainNN(object):
                                                             shuffle=train_shuffle, num_workers=num_workers, pin_memory=True)
         self.var_test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=train_sampler,
                                                            shuffle=test_shuffle, num_workers=num_workers, pin_memory=True)
-        self.als_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=train_sampler,
-                                                      shuffle=False, num_workers=num_workers, pin_memory=True)
+        self.als_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
+                                                      shuffle=True, num_workers=num_workers, pin_memory=True)
 
         """Transfer learning"""
         if self.flag_transfer == 1:
@@ -387,6 +387,11 @@ class MainNN(object):
                 sum = sum + layer_rate[i]
             layer_rate[self.num_layer - 1] = 1.0 - sum
 
+            """
+            layer_rate[0] = 0.9
+            for i in range(self.num_layer - 1):
+                layer_rate[i + 1] = 0.1 / (self.num_layer - 1)
+            """
             self.layer_rate_all = np.zeros((self.num_epochs, self.num_layer))
 
         """初期化"""
@@ -401,14 +406,9 @@ class MainNN(object):
 
         images_als_origin = 0
         labels_als_origin = 0
-        for j, (images_als, labels_als, index) in enumerate(self.als_loader):
-            if j == 0:
-                images_als_origin = images_als
-                labels_als_origin = labels_als
 
         for epoch in range(self.num_epochs):
             """学習"""
-            model.train()
             start_epoch_time = timeit.default_timer()  # 1エポック中の学習全体の開始時刻を取得
             train_loss = None
             if self.flag_horovod == 1:
@@ -427,12 +427,21 @@ class MainNN(object):
             steps = 0
             num_training_data = 0
 
+            for i, (images_als, labels_als, index) in enumerate(self.als_loader):
+                if i == 0:
+                    images_als_origin = images_als
+                    labels_als_origin = labels_als
+
             for i, (images, labels, _) in enumerate(self.train_loader):
                 loss_training_before_all = 0
                 loss_training_after_all = 0
 
                 """ALS process before weight update"""
                 if self.flag_als == 1:
+                    model.eval()
+
+                    # images_als_origin = images.clone()
+                    # labels_als_origin = labels.clone()
                     if np.array(images_als_origin.data).ndim == 3:
                         images_als = images_als_origin.reshape(images_als_origin.shape[0], 1, images_als_origin.shape[1], images_als_origin.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
                     else:
@@ -440,7 +449,7 @@ class MainNN(object):
                     labels_als = labels_als_origin.to(device)
 
                     outputs_als, labels_als = model(x=images_als, y=labels_als, flag_aug=0, flag_dropout=0,
-                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0)
+                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0, flag_als=0)
 
                     if labels_als.ndim == 1:
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
@@ -448,6 +457,7 @@ class MainNN(object):
                     loss_training_before = criterion.forward(outputs_als, labels_als)
                     loss_training_before_all = loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計
 
+                model.train()
                 steps += 1
                 if np.array(images.data).ndim == 3:
                     images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
@@ -476,7 +486,7 @@ class MainNN(object):
                     # layer_var = np.random.randint(self.layer_var + 1)
 
                 outputs, labels = model(x=images, y=labels, flag_aug=self.flag_myaug_training, flag_dropout=self.flag_dropout,
-                                        flag_var=0, layer_aug=layer_aug, layer_drop=layer_drop, layer_var=0, flag_track=1)
+                                        flag_var=0, layer_aug=layer_aug, layer_drop=layer_drop, layer_var=0, flag_track=1, flag_als=0)
 
                 if labels.ndim == 1:
                     labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # one hot表現に変換
@@ -498,6 +508,8 @@ class MainNN(object):
 
                 """ALS process after weight update"""
                 if self.flag_als == 1:
+                    model.eval()
+
                     if np.array(images_als_origin.data).ndim == 3:
                         images_als = images_als_origin.reshape(images_als_origin.shape[0], 1, images_als_origin.shape[1], images_als_origin.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
                     else:
@@ -505,7 +517,7 @@ class MainNN(object):
                     labels_als = labels_als_origin.to(device)
 
                     outputs_als, labels_als = model(x=images_als, y=labels_als, flag_aug=0, flag_dropout=0,
-                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0)
+                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0, flag_als=0)
 
                     if labels_als.ndim == 1:
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
@@ -528,8 +540,16 @@ class MainNN(object):
                         if delta_loss > 0:
                             func_sign_random[layer_aug] = func_sign_random[layer_aug] + 1
                     else:
-                        if epoch == self.epoch_random and i == 0:
+                        if self.epoch_random > 0 and epoch == self.epoch_random and i == 0:
                             layer_rate = func_sign_random / np.sum(func_sign_random)
+
+                            for j in range(self.num_layer):
+                                if layer_rate[j] >= 1 - self.als_rate:
+                                    layer_rate[j] = 1 - self.als_rate
+                                elif layer_rate[j] <= self.als_rate:
+                                    layer_rate[j] = self.als_rate
+
+                            layer_rate = layer_rate / np.sum(layer_rate)
 
                         if delta_loss > 0:
                             func_sign = 1
@@ -586,7 +606,8 @@ class MainNN(object):
                     if self.save_images == 1 and epoch == self.num_epochs - 1:
                         util.save_images(images)
 
-                    outputs, _ = model.forward(x=images, y=labels, flag_aug=self.flag_myaug_test, flag_dropout=0, flag_var=0, flag_track=1)
+                    outputs, _ = model.forward(x=images, y=labels, flag_aug=self.flag_myaug_test, flag_dropout=0,
+                                               flag_var=0, flag_track=1, flag_als=0)
 
                     if self.flag_acc5 == 1:
                         acc1, acc5 = util.accuracy(outputs.data, labels.long(), topk=(1, 5))
