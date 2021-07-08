@@ -145,7 +145,7 @@ def mixup(image, label, num_classes):
     mix_rate2 = None
     if image.ndim == 2:
         mix_rate2 = util.to_var(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
-    elif  image.ndim == 4:
+    elif image.ndim == 4:
         mix_rate2 = util.to_var(torch.from_numpy(mix_rate.reshape((image.shape[0], 1, 1, 1))).float())
 
     mix_rate = util.to_var(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())

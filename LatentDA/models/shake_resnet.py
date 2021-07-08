@@ -6,8 +6,6 @@ import torch.nn.functional as F
 import math
 import numpy as np
 import util
-import numpy_snn
-import pytorch_snn
 
 from RandAugment.networks.shakeshake.shakeshake import ShakeShake
 from RandAugment.networks.shakeshake.shakeshake import Shortcut
@@ -40,7 +38,7 @@ class ShakeBlock(nn.Module):
 
 
 class ShakeResNet(nn.Module):
-    def __init__(self, depth, w_base, label, num_channel, n_data, n_layer, n_aug, temp, multi_gpu=0):
+    def __init__(self, depth, w_base, label, num_channel, n_data, n_layer, n_aug, multi_gpu=0):
         super(ShakeResNet, self).__init__()
         n_units = (depth - 2) / 6
 
@@ -49,7 +47,6 @@ class ShakeResNet(nn.Module):
         self.n_data = n_data
         self.n_layer = n_layer
         self.n_aug = n_aug
-        self.temp = temp
         self.num_classes = label
 
         if multi_gpu == 1:  # マルチGPU
@@ -91,62 +88,3 @@ class ShakeResNet(nn.Module):
         h = h.view(-1, self.in_chs[3])
         h = self.fc_out(h)
         return h
-
-    def forward_augmentation(self, x, y, flag_aug=0, flag_snnloss=0, snnloss=None, flag_tSNE=0, flag_randaug=0):
-        if self.n_layer == 10000:
-            layer = np.random.randint(5)
-        else:
-            layer = self.n_layer
-        flag_onehot = 0
-
-        if flag_randaug == 0 and flag_aug == 1 and layer == 0:
-            x, y, flag_onehot = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        h = self.c_in(x)
-        if flag_snnloss == 1:
-            snnloss[0] = pytorch_snn.snnLoss_broadcast(h, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-            # snnloss[0] = numpy_snn.snnLoss(x, y, T=self.temp)
-            # snnloss[0] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-        if flag_randaug == 0 and flag_aug == 1 and layer == 1:
-            h, y, flag_onehot = util.run_n_aug(h, y, self.n_aug, self.num_classes)
-        h = self.layer1(h)
-        if flag_snnloss == 1:
-            snnloss[1] = pytorch_snn.snnLoss_broadcast(h, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-            # snnloss[1] = numpy_snn.snnLoss(x, y, T=self.temp)
-            # snnloss[1] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-        if flag_randaug == 0 and flag_aug == 1 and layer == 2:
-            h, y, flag_onehot = util.run_n_aug(h, y, self.n_aug, self.num_classes)
-        h = self.layer2(h)
-        if flag_snnloss == 1:
-            snnloss[2] = pytorch_snn.snnLoss_broadcast(h, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-            # snnloss[2] = numpy_snn.snnLoss(x, y, T=self.temp)
-            # snnloss[2] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-        if flag_randaug == 0 and flag_aug == 1 and layer == 3:
-            h, y, flag_onehot = util.run_n_aug(h, y, self.n_aug, self.num_classes)
-        h = self.layer3(h)
-        h = F.relu(h)
-        if flag_snnloss == 1:
-            snnloss[3] = pytorch_snn.snnLoss_broadcast(h, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-            # snnloss[3] = numpy_snn.snnLoss(x, y, T=self.temp)
-            # snnloss[3] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-        if flag_randaug == 0 and flag_aug == 1 and layer == 4:
-            h, y, flag_onehot = util.run_n_aug(h, y, self.n_aug, self.num_classes)
-        h = F.avg_pool2d(h, 8)
-        h = h.view(-1, self.in_chs[3])
-        h = self.fc_out(h)
-        if flag_snnloss == 1:
-            snnloss[4] = pytorch_snn.snnLoss_broadcast(h, y, T=self.temp, num_classes=self.num_classes, ndim=2)
-            # snnloss[4] = numpy_snn.snnLoss(x, y, T=self.temp)
-            # snnloss[4] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-        return h, y, flag_onehot, snnloss
-
-    def _make_layer(self, n_units, in_ch, out_ch, stride=1):
-        layers = []
-        for i in range(int(n_units)):
-            layers.append(ShakeBlock(in_ch, out_ch, stride=stride))
-            in_ch, stride = out_ch, 1
-        return nn.Sequential(*layers)

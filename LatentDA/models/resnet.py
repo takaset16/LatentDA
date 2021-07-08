@@ -86,12 +86,11 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, depth, num_classes, num_channel, n_data, n_aug, temp, bottleneck=False):
+    def __init__(self, depth, num_classes, num_channel, n_data, n_aug, bottleneck=False):
         super(ResNet, self).__init__()
         self.num_classes = num_classes
         self.n_data = n_data
         self.n_aug = n_aug
-        self.temp = temp
 
         if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
             self.inplanes = 16
@@ -158,16 +157,9 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, flag_random_layer=0, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
+    def forward(self, x, y, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
         if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-            if flag_random_layer == 1:
-                layer_aug = np.random.randint(layer_aug + 1)
-                # layer_aug = np.random.randint(layer_aug) + 1
-                layer_drop = np.random.randint(layer_drop + 1)
-                layer_var = np.random.randint(layer_var + 1)
-
             if flag_aug == 1 and layer_aug == 0:
-            # if flag_aug == 1:
                 x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
             x = self.conv1(x)
             x = self.bn1(x)
@@ -215,11 +207,6 @@ class ResNet(nn.Module):
                 x = self.dropout(x)
 
         elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-            if flag_random_layer == 1:
-                layer_aug = np.random.randint(layer_aug + 1)
-                layer_drop = np.random.randint(layer_drop + 1)
-                layer_var = np.random.randint(layer_var + 1)
-
             if flag_aug == 1 and layer_aug == 0:
                 x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
             x = self.conv1(x)
@@ -276,145 +263,4 @@ class ResNet(nn.Module):
             if flag_dropout == 1 and layer_drop == 6:
                 x = self.dropout(x)
 
-        return x, y
-
-    def forward_snn(self, x, y, flag_myaug=0, flag_snnloss=0, snnloss=None, flag_tSNE=0):
-        if flag_myaug == 1:
-            if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-                if self.n_layer == 10000:
-                    layer = np.random.randint(6)
-                else:
-                    layer = self.n_layer
-
-                if layer == 0:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.conv1(x)
-                x = self.bn1(x)
-                x = self.relu(x)
-                if flag_snnloss == 1:
-                    snnloss[0] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[0] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[0] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 1:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer1(x)
-                if flag_snnloss == 1:
-                    snnloss[1] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[1] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[1] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 2:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer2(x)
-                if flag_snnloss == 1:
-                    snnloss[2] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[2] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[2] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 3:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer3(x)
-                if flag_snnloss == 1:
-                    snnloss[3] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[3] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[3] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 4:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.avgpool(x)
-                x = x.view(x.size(0), -1)
-                x = self.fc(x)
-                if flag_snnloss == 1:
-                    snnloss[4] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=2)
-                    # snnloss[4] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[4] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-            elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-                if self.n_layer == 10000:
-                    layer = np.random.randint(6)
-                else:
-                    layer = self.n_layer
-
-                if layer == 0:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.conv1(x)
-                x = self.bn1(x)
-                x = self.relu(x)
-                x = self.maxpool(x)
-                if flag_snnloss == 1:
-                    snnloss[0] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[0] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[0] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 1:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer1(x)
-                if flag_snnloss == 1:
-                    snnloss[1] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[1] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[1] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 2:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer2(x)
-                if flag_snnloss == 1:
-                    snnloss[2] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[2] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[2] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 3:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer3(x)
-                if flag_snnloss == 1:
-                    snnloss[3] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[3] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[3] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 4:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.layer4(x)
-                if flag_snnloss == 1:
-                    snnloss[4] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                    # snnloss[4] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[4] = pytorch_snn.snnLoss(x, y, T=self.temp)
-
-                if layer == 5:
-                    x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                x = self.avgpool(x)
-                x = x.view(x.size(0), -1)
-                x = self.fc(x)
-                if flag_snnloss == 1:
-                    snnloss[5] = pytorch_snn.snnLoss_broadcast(x, y, T=self.temp, num_classes=self.num_classes, ndim=2)
-                    # snnloss[5] = numpy_snn.snnLoss(x, y, T=self.temp)
-                    # snnloss[5] = pytorch_snn.snnLoss(x, y, T=self.temp)
-        else:
-            if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-                x = self.conv1(x)
-                x = self.bn1(x)
-                x = self.relu(x)
-
-                x = self.layer1(x)
-                x = self.layer2(x)
-                x = self.layer3(x)
-
-                x = self.avgpool(x)
-                x = x.view(x.size(0), -1)
-                x = self.fc(x)
-
-            elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-                x = self.conv1(x)
-                x = self.bn1(x)
-                x = self.relu(x)
-                x = self.maxpool(x)
-
-                x = self.layer1(x)
-                x = self.layer2(x)
-                x = self.layer3(x)
-                x = self.layer4(x)
-
-                x = self.avgpool(x)
-                x = x.view(x.size(0), -1)
-                x = self.fc(x)
-
-        return x, y, snnloss
+        return x, y, layer_aug

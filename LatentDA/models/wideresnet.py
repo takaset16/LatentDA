@@ -48,12 +48,11 @@ class WideBasic(nn.Module):
 
 
 class WideResNet(nn.Module):
-    def __init__(self, depth, widen_factor, dropout_rate, num_classes, num_channel, n_aug, temp):
+    def __init__(self, depth, widen_factor, dropout_rate, num_classes, num_channel, n_aug):
         super(WideResNet, self).__init__()
         self.in_planes = 16
         self.num_classes = num_classes
         self.n_aug = n_aug
-        self.temp = temp
 
         assert ((depth - 4) % 6 == 0), 'Wide-resnet depth should be 6n+4'
         n = int((depth - 4) / 6)
@@ -79,12 +78,7 @@ class WideResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, flag_random_layer=0, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
-        if flag_random_layer == 1:
-            layer_aug = np.random.randint(layer_aug + 1)
-            layer_drop = np.random.randint(layer_drop + 1)
-            layer_var = np.random.randint(layer_var + 1)
-
+    def forward(self, x, y, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
         if flag_aug == 1 and layer_aug == 0:
             x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
         x = self.conv1(x)
@@ -139,80 +133,4 @@ class WideResNet(nn.Module):
         if flag_dropout == 1 and layer_drop == 6:
             x = self.dropout(x)
 
-        return x, y
-
-    def forward_snn(self, x, y, flag_myaug=0, flag_snnloss=0, snnloss=None, flag_tSNE=0):
-        if flag_myaug == 1:
-            if self.n_layer == 10000:
-                layer = np.random.randint(6)
-            else:
-                layer = self.n_layer
-
-            if layer == 0:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-                # x, y = util.run_n_aug_random(x, y, self.n_aug, self.num_classes)
-            out = self.conv1(x)
-            if flag_snnloss == 1:
-                snnloss[0] = pytorch_snn.snnLoss_broadcast(out, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                # snnloss[0] = numpy_snn.snnLoss(out, y, T=self.temp)
-                # snnloss[0] = pytorch_snn.snnLoss(out, y, T=self.temp)
-
-            if layer == 1:
-                out, y = util.run_n_aug(out, y, self.n_aug, self.num_classes)
-                # out, y = util.run_n_aug_random(out, y, self.n_aug, self.num_classes)
-            out = self.layer1(out)
-            if flag_snnloss == 1:
-                snnloss[1] = pytorch_snn.snnLoss_broadcast(out, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                # snnloss[1] = numpy_snn.snnLoss(out, y, T=self.temp)
-                # snnloss[1] = pytorch_snn.snnLoss(out, y, T=self.temp)
-
-            if layer == 2:
-                out, y = util.run_n_aug(out, y, self.n_aug, self.num_classes)
-                # out, y = util.run_n_aug_random(out, y, self.n_aug, self.num_classes)
-            out = self.layer2(out)
-            if flag_snnloss == 1:
-                snnloss[2] = pytorch_snn.snnLoss_broadcast(out, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                # snnloss[2] = numpy_snn.snnLoss(out, y, T=self.temp)
-                # snnloss[2] = pytorch_snn.snnLoss(out, y, T=self.temp)
-
-            if layer == 3:
-                out, y = util.run_n_aug(out, y, self.n_aug, self.num_classes)
-                # out, y = util.run_n_aug_random(out, y, self.n_aug, self.num_classes)
-            out = self.layer3(out)
-            if flag_snnloss == 1:
-                snnloss[3] = pytorch_snn.snnLoss_broadcast(out, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                # snnloss[3] = numpy_snn.snnLoss(out, y, T=self.temp)
-                # snnloss[3] = pytorch_snn.snnLoss(out, y, T=self.temp)
-
-            if layer == 4:
-                out, y = util.run_n_aug(out, y, self.n_aug, self.num_classes)
-                # out, y = util.run_n_aug_random(out, y, self.n_aug, self.num_classes)
-            out = F.relu(self.bn1(out))
-            if flag_snnloss == 1:
-                snnloss[4] = pytorch_snn.snnLoss_broadcast(out, y, T=self.temp, num_classes=self.num_classes, ndim=4)
-                # snnloss[4] = numpy_snn.snnLoss(out, y, T=self.temp)
-                # snnloss[4] = pytorch_snn.snnLoss(out, y, T=self.temp)
-
-            if layer == 5:
-                out, y = util.run_n_aug(out, y, self.n_aug, self.num_classes)
-                # out, y = util.run_n_aug_random(out, y, self.n_aug, self.num_classes)
-            # out = F.avg_pool2d(out, 8)
-            out = F.adaptive_avg_pool2d(out, (1, 1))
-            out = out.view(out.size(0), -1)
-            out = self.linear(out)
-            if flag_snnloss == 1:
-                snnloss[5] = pytorch_snn.snnLoss_broadcast(out, y, T=self.temp, num_classes=self.num_classes, ndim=2)
-                # snnloss[5] = numpy_snn.snnLoss(out, y, T=self.temp)
-                # snnloss[5] = pytorch_snn.snnLoss(out, y, T=self.temp)
-        else:
-            x = self.conv1(x)
-            x = self.layer1(x)
-            x = self.layer2(x)
-            x = self.layer3(x)
-            x = F.relu(self.bn1(x))
-            # x = F.avg_pool2d(x, 8)
-            x = F.adaptive_avg_pool2d(x, (1, 1))
-            x = x.view(x.size(0), -1)
-            x = self.linear(x)
-
-        return x, y, snnloss
+        return x, y, layer_aug
