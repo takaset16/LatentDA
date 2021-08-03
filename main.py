@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--save_file', type=int, default=1)
     parser.add_argument('--show_params', type=int, default=0)
     parser.add_argument('--save_images', type=int, default=0)
-    parser.add_argument('--n_aug', type=int, default=12)
+    parser.add_argument('--n_aug', type=int, default=0)
     parser.add_argument('--flag_acc5', type=int, default=1)
     parser.add_argument('--flag_horovod', type=int, default=0)
     parser.add_argument('--cutout', type=int, default=0)
@@ -52,6 +52,8 @@ def main():
     parser.add_argument('--flag_als', type=int, default=0)
     parser.add_argument('--als_rate', type=float, default=0)
     parser.add_argument('--epoch_random', type=int, default=0)
+    parser.add_argument('--iter_interval', type=int, default=1)
+    parser.add_argument('--flag_adversarial', type=int, default=0)
     args = parser.parse_args()
 
     main_model = main_nn.MainNN(loop=args.loop,
@@ -91,7 +93,9 @@ def main():
                                 batch_size_variance=args.batch_size_variance,
                                 flag_als=args.flag_als,
                                 als_rate=args.als_rate,
-                                epoch_random=args.epoch_random
+                                epoch_random=args.epoch_random,
+                                iter_interval=args.iter_interval,
+                                flag_adversarial=args.flag_adversarial
                                 )
     main_model.run_main()
 

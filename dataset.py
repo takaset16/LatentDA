@@ -55,8 +55,8 @@ class MyDataset_training(Dataset):
                 ])
             else:
                 transform_train = transforms.Compose([
-                    # transforms.RandomCrop(32, padding=4),
-                    # transforms.RandomHorizontalFlip(),
+                    transforms.RandomCrop(32, padding=4),
+                    transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
                 ])
@@ -68,8 +68,8 @@ class MyDataset_training(Dataset):
                 ])
             else:
                 transform_train = transforms.Compose([
-                    # transforms.RandomCrop(32, padding=4),
-                    # transforms.RandomHorizontalFlip(),
+                    transforms.RandomCrop(32, padding=4),
+                    transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4376821, 0.4437697, 0.47280442), std=(0.19803012, 0.20101562, 0.19703614))  # 画像保存するときはコメントアウトしたほうがよい
                 ])

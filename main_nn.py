@@ -11,9 +11,9 @@ from models import *
 class MainNN(object):
     def __init__(self, loop, n_data, gpu_multi, hidden_size, num_samples, num_epochs, batch_size_training, batch_size_test,
                  n_model, opt, save_file, show_params, save_images, flag_acc5, flag_horovod, cutout, n_aug,
-                 flag_myaug_training, flag_myaug_test, flag_dropout, flag_transfer, flag_randaug, rand_n, rand_m, flag_lars, lb_smooth, flag_lr_schedule,
-                 flag_warmup, layer_aug, layer_drop, flag_random_layer, save_maps,
-                 flag_traintest, flag_var, batch_size_variance, flag_als, als_rate, epoch_random):
+                 flag_myaug_training, flag_myaug_test, flag_dropout, flag_transfer, flag_randaug, rand_n, rand_m,
+                 flag_lars, lb_smooth, flag_lr_schedule, flag_warmup, layer_aug, layer_drop, flag_random_layer, save_maps,
+                 flag_traintest, flag_var, batch_size_variance, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
@@ -78,6 +78,8 @@ class MainNN(object):
         self.als_rate = als_rate
         self.layer_rate_all = None
         self.epoch_random = epoch_random
+        self.iter_interval = iter_interval
+        self.flag_adversarial = flag_adversarial
 
     def run_main(self):
         if self.flag_horovod == 1:
@@ -160,6 +162,8 @@ class MainNN(object):
                                                            shuffle=test_shuffle, num_workers=num_workers, pin_memory=True)
         self.als_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
                                                       shuffle=True, num_workers=num_workers, pin_memory=True)
+        # self.als_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size_test, sampler=train_sampler,
+        #                                               shuffle=True, num_workers=num_workers, pin_memory=True)
 
         """Transfer learning"""
         if self.flag_transfer == 1:
@@ -181,38 +185,32 @@ class MainNN(object):
         """neural network model"""
         model = None
         if self.n_model == 'MLP':
-            model = mlp.MLPNet(input_size=self.input_size, hidden_size=self.hidden_size, num_classes=self.num_classes,
-                               n_layer=self.n_layer, n_aug=self.n_aug)
+            model = mlp.MLPNet(input_size=self.input_size, hidden_size=self.hidden_size, num_classes=self.num_classes)
         elif self.n_model == 'CNN':
-            model = cnn.ConvNet(num_classes=self.num_classes, num_channel=self.num_channel, size_after_cnn=self.size_after_cnn,
-                                n_aug=self.n_aug)
+            model = cnn.ConvNet(num_classes=self.num_classes, num_channel=self.num_channel, size_after_cnn=self.size_after_cnn)
         elif self.n_model == 'ResNet':
             # model = resnet.ResNet(depth=18, num_classes=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
             #                       n_aug=self.n_aug, bottleneck=True)  # resnet18
-            model = resnet.ResNet(depth=50, num_classes=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
-                                  n_aug=self.n_aug, bottleneck=True)  # resnet50
-            # model = resnet.ResNet(depth=200, num_classes=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
-            #                       n_aug=self.n_aug, bottleneck=True)  # resnet200
+            model = resnet.ResNet(depth=50, num_classes=self.num_classes, num_channel=self.num_channel, n_data=self.n_data, bottleneck=True)  # resnet50
+            # model = resnet.ResNet(depth=200, num_classes=self.num_classes, num_channel=self.num_channel, n_data=self.n_data, bottleneck=True)  # resnet200
         elif self.n_model == 'WideResNet':
             # model = wideresnet.WideResNet(depth=40, widen_factor=2, dropout_rate=0.0, num_classes=self.num_classes, num_channel=self.num_channel,
-            #                               n_data=self.n_data, n_aug=self.n_aug)  # wresnet40_2
-            model = wideresnet.WideResNet(depth=28, widen_factor=10, dropout_rate=0.0, num_classes=self.num_classes, num_channel=self.num_channel,
-                                          n_aug=self.n_aug)  # wresnet28_10
+            #                               n_data=self.n_data)  # wresnet40_2
+            model = wideresnet.WideResNet(depth=28, widen_factor=10, dropout_rate=0.0, num_classes=self.num_classes, num_channel=self.num_channel)  # wresnet28_10
         elif self.n_model == 'ShakeResNet':
             # model = shake_resnet.ShakeResNet(depth=26, w_base=32, label=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
-            #                                  n_layer=self.n_layer, n_aug=self.n_aug)  # shakeshake26_2x32d
+            #                                  n_layer=self.n_layer)  # shakeshake26_2x32d
             # model = shake_resnet.ShakeResNet(depth=26, w_base=64, label=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
-            #                                  n_layer=self.n_layer, n_aug=self.n_aug)  # shakeshake26_2x64d
+            #                                  n_layer=self.n_layer)  # shakeshake26_2x64d
             model = shake_resnet.ShakeResNet(depth=26, w_base=96, label=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
-                                             n_layer=self.n_layer, n_aug=self.n_aug)  # shakeshake26_2x96d
+                                             n_layer=self.n_layer)  # shakeshake26_2x96d
             # model = shake_resnet.ShakeResNet(depth=26, w_base=112, label=self.num_classes, num_channel=self.num_channel, n_data=self.n_data,
-            #                                  n_layer=self.n_layer, n_aug=self.n_aug)  # shakeshake26_2x112d
+            #                                  n_layer=self.n_layer)  # shakeshake26_2x112d
         elif self.n_model == 'PyramidNet':
             model = PyramidNet(n_data=self.n_data, depth=272, alpha=200, num_classes=self.num_classes, num_channel=self.num_channel,
-                               n_layer=self.n_layer, n_aug=self.n_aug, bottleneck=True)
+                               n_layer=self.n_layer, bottleneck=True)
         elif self.n_model == 'EfficientNet':
-            model = EfficientNet.from_name('efficientnet-b3', num_classes=self.num_classes, n_layer=self.n_layer, n_aug=self.n_aug,
-                                           flag_fc=self.flag_fc, alpha=self.alpha, alpha2=self.alpha2)
+            model = EfficientNet.from_name('efficientnet-b3', num_classes=self.num_classes, alpha=self.alpha, alpha2=self.alpha2)
 
         """Transfer learning"""
         if self.flag_transfer == 1:
@@ -374,24 +372,25 @@ class MainNN(object):
         elif self.n_model == 'WideResNet':
             self.num_layer = 6
 
-        if self.flag_random_layer == 1:
-            self.layer_aug = self.num_layer - 1
-
         """ALS"""
         layer_rate = np.zeros(self.num_layer)
         func_sign_random = np.zeros(self.num_layer)
-        if self.flag_als == 1:
+        layer_rate_mean = np.zeros(self.num_layer)
+        loss_greedy_als = np.zeros(self.num_layer)
+        loss_greedy_als_sum = np.zeros(self.num_layer)
+        if self.flag_als >= 1:
             sum = 0
+            """
             for i in range(self.num_layer - 1):
                 layer_rate[i] = 1.0 / self.num_layer
                 sum = sum + layer_rate[i]
             layer_rate[self.num_layer - 1] = 1.0 - sum
+            """
 
-            """
-            layer_rate[0] = 0.9
+            layer_rate[0] = 1 - self.als_rate
             for i in range(self.num_layer - 1):
-                layer_rate[i + 1] = 0.1 / (self.num_layer - 1)
-            """
+                layer_rate[i + 1] = self.als_rate / (self.num_layer - 1)
+
             self.layer_rate_all = np.zeros((self.num_epochs, self.num_layer))
 
         """初期化"""
@@ -404,8 +403,8 @@ class MainNN(object):
         aug_layer_count = np.zeros(self.num_layer, dtype=int)
         self.aug_layer_count_all = np.zeros((self.num_epochs, self.num_layer), dtype=int)
 
-        images_als_origin = 0
-        labels_als_origin = 0
+        images_als_origin = None
+        labels_als_origin = None
 
         for epoch in range(self.num_epochs):
             """学習"""
@@ -427,10 +426,15 @@ class MainNN(object):
             steps = 0
             num_training_data = 0
 
-            for i, (images_als, labels_als, index) in enumerate(self.als_loader):
+            for i, (images, labels, _) in enumerate(self.als_loader):
                 if i == 0:
-                    images_als_origin = images_als
-                    labels_als_origin = labels_als
+                    if np.array(images.data).ndim == 3:
+                        images_als_origin = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
+                    else:
+                        images_als_origin = images.to(device)
+                    labels_als_origin = labels.to(device)
+
+                    break
 
             for i, (images, labels, _) in enumerate(self.train_loader):
                 loss_training_before_all = 0
@@ -440,16 +444,13 @@ class MainNN(object):
                 if self.flag_als == 1:
                     model.eval()
 
-                    # images_als_origin = images.clone()
-                    # labels_als_origin = labels.clone()
-                    if np.array(images_als_origin.data).ndim == 3:
-                        images_als = images_als_origin.reshape(images_als_origin.shape[0], 1, images_als_origin.shape[1], images_als_origin.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
+                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)  # if using test data
+                    """
+                    if self.n_aug == 1 or self.n_aug == 5:
+                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=6, layer_aug=0, flag_track=0)
                     else:
-                        images_als = images_als_origin.to(device)
-                    labels_als = labels_als_origin.to(device)
-
-                    outputs_als, labels_als = model(x=images_als, y=labels_als, flag_aug=0, flag_dropout=0,
-                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0, flag_als=0)
+                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=1, layer_aug=0, flag_track=0)
+                    """
 
                     if labels_als.ndim == 1:
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
@@ -468,25 +469,51 @@ class MainNN(object):
                 if self.save_images == 1:
                     util.save_images(images)
 
-                layer_aug = self.layer_aug
-                layer_drop = self.layer_drop
-
                 flag_als = 0
-                if self.flag_als == 1:
+                if self.flag_als >= 1:
                     if epoch < self.epoch_random:
                         flag_als = 0
                     else:
                         flag_als = 1
-                if self.flag_random_layer == 1:
-                    if flag_als == 1:
-                        layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
-                    else:
-                        layer_aug = np.random.randint(self.layer_aug + 1)
-                    layer_drop = np.random.randint(self.layer_drop + 1)
-                    # layer_var = np.random.randint(self.layer_var + 1)
 
-                outputs, labels = model(x=images, y=labels, flag_aug=self.flag_myaug_training, flag_dropout=self.flag_dropout,
-                                        flag_var=0, layer_aug=layer_aug, layer_drop=layer_drop, layer_var=0, flag_track=1, flag_als=0)
+                layer_aug = 0
+                if self.flag_als == 3:  # greedy-ALS
+                    for j in range(self.num_layer):
+                        # outputs, labels_new = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using training data
+                        outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using test data
+                        """
+                        if self.n_aug == 1 or self.n_aug == 5:
+                            outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=6, layer_aug=j, flag_track=0)
+                        else:
+                            outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=1, layer_aug=j, flag_track=0)
+                        """
+                        if labels_new.ndim == 1:
+                            labels_new = torch.eye(self.num_classes, device='cuda')[labels_new].clone()  # one hot表現に変換
+
+                        loss_greedy_als[j] = criterion.forward(outputs, labels_new).item()
+
+                    loss_greedy_als_sum = loss_greedy_als_sum + loss_greedy_als
+                    if (self.iter + 1) % self.iter_interval == 0:
+                        if self.flag_adversarial == 1:
+                            layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
+                        else:
+                            layer_aug = np.argmin(loss_greedy_als_sum)
+
+                        loss_greedy_als_sum = np.zeros(self.num_layer)
+                else:
+                    if self.flag_randaug == 1:
+                        if flag_als == 1:
+                            layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
+                        else:
+                            layer_aug = np.random.randint(self.num_layer)
+                    else:
+                        layer_aug = self.layer_aug
+
+                    if self.flag_dropout == 1:
+                        layer_drop = np.random.randint(self.num_layer)
+
+                outputs, labels = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=layer_aug, flag_dropout=self.flag_dropout,
+                                        layer_drop=self.layer_drop, flag_track=1)
 
                 if labels.ndim == 1:
                     labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # one hot表現に変換
@@ -495,6 +522,7 @@ class MainNN(object):
 
                 loss_training_all += loss_training.item() * outputs.shape[0]  # ミニバッチ内の誤差の合計を足していく
                 num_training_data += images.shape[0]
+                loss_naive_als = loss_training.item()
 
                 aug_layer_count[layer_aug] = aug_layer_count[layer_aug] + 1
 
@@ -510,14 +538,8 @@ class MainNN(object):
                 if self.flag_als == 1:
                     model.eval()
 
-                    if np.array(images_als_origin.data).ndim == 3:
-                        images_als = images_als_origin.reshape(images_als_origin.shape[0], 1, images_als_origin.shape[1], images_als_origin.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                    else:
-                        images_als = images_als_origin.to(device)
-                    labels_als = labels_als_origin.to(device)
-
-                    outputs_als, labels_als = model(x=images_als, y=labels_als, flag_aug=0, flag_dropout=0,
-                                                    flag_var=0, layer_aug=0, layer_drop=0, layer_var=0, flag_track=0, flag_als=0)
+                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)  # if using test data
+                    # outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=0, flag_track=0)  # use the same DA parameters
 
                     if labels_als.ndim == 1:
                         labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
@@ -539,41 +561,56 @@ class MainNN(object):
                     if epoch < self.epoch_random:
                         if delta_loss > 0:
                             func_sign_random[layer_aug] = func_sign_random[layer_aug] + 1
-                    else:
-                        if self.epoch_random > 0 and epoch == self.epoch_random and i == 0:
-                            layer_rate = func_sign_random / np.sum(func_sign_random)
+                    elif self.epoch_random > 0 and epoch == self.epoch_random and i == 0:
+                        layer_rate = func_sign_random / np.sum(func_sign_random)
 
-                            for j in range(self.num_layer):
-                                if layer_rate[j] >= 1 - self.als_rate:
-                                    layer_rate[j] = 1 - self.als_rate
-                                elif layer_rate[j] <= self.als_rate:
-                                    layer_rate[j] = self.als_rate
+                        for j in range(self.num_layer):
+                            if layer_rate[j] >= 1 - self.als_rate:
+                                layer_rate[j] = 1 - self.als_rate
+                            elif layer_rate[j] <= self.als_rate:
+                                layer_rate[j] = self.als_rate
 
-                            layer_rate = layer_rate / np.sum(layer_rate)
-
+                        layer_rate = layer_rate / np.sum(layer_rate)
+                    if epoch >= self.epoch_random:
                         if delta_loss > 0:
                             func_sign = 1
                         elif delta_loss == 0:
                             func_sign = 0
                         else:
                             func_sign = -1
-                        layer_rate[layer_aug] = layer_rate[layer_aug] + self.als_rate * func_sign
 
-                        if layer_rate[layer_aug] >= 1 - self.als_rate:
-                            layer_rate[layer_aug] = 1 - self.als_rate
-                        elif layer_rate[layer_aug] <= self.als_rate:
-                            layer_rate[layer_aug] = self.als_rate
+                        layer_rate_mean[layer_aug] = layer_rate_mean[layer_aug] + self.als_rate * func_sign
 
-                        if i == 0:
-                            print(layer_rate)
+                        if (self.iter + 1) % self.iter_interval == 0:
+                            if self.flag_adversarial == 1:
+                                layer_rate = layer_rate - layer_rate_mean / self.iter_interval  # reverse
+                            else:
+                                layer_rate = layer_rate + layer_rate_mean / self.iter_interval
 
-                        layer_rate = layer_rate / np.sum(layer_rate)
+                elif self.flag_als == 2:  # naive ALS
+                    layer_rate_mean[layer_aug] = layer_rate_mean[layer_aug] - self.als_rate * loss_naive_als
+
+                    if (self.iter + 1) % self.iter_interval == 0:
+                        if self.flag_adversarial == 1:
+                            layer_rate = layer_rate - layer_rate_mean / self.iter_interval  # reverse
+                        else:
+                            layer_rate = layer_rate + layer_rate_mean / self.iter_interval
+
+                if self.flag_als == 1 or self.flag_als == 2:
+                    for j in range(self.num_layer):
+                        if layer_rate[j] >= 1 - self.als_rate:
+                            layer_rate[j] = 1 - self.als_rate
+                        elif layer_rate[j] <= self.als_rate:
+                            layer_rate[j] = self.als_rate
+
+                    layer_rate = layer_rate / np.sum(layer_rate)
+                    layer_rate_mean = np.zeros(self.num_layer)
 
                 self.iter += 1
 
             loss_training_each = loss_training_all / num_training_data  # サンプル1つあたりの誤差
 
-            if self.flag_als == 1:
+            if self.flag_als >= 1:
                 self.layer_rate_all[epoch] = layer_rate
             self.aug_layer_count_all[epoch] = aug_layer_count
 
@@ -606,8 +643,7 @@ class MainNN(object):
                     if self.save_images == 1 and epoch == self.num_epochs - 1:
                         util.save_images(images)
 
-                    outputs, _ = model.forward(x=images, y=labels, flag_aug=self.flag_myaug_test, flag_dropout=0,
-                                               flag_var=0, flag_track=1, flag_als=0)
+                    outputs, _ = model.forward(x=images, y=labels, n_aug=0, flag_track=1)
 
                     if self.flag_acc5 == 1:
                         acc1, acc5 = util.accuracy(outputs.data, labels.long(), topk=(1, 5))
@@ -717,35 +753,21 @@ class MainNN(object):
                                % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.flag_random_layer, self.rand_n, self.rand_m, self.seed, top1_avg_max),
                                results, delimiter=',')
                 else:
-                    if self.flag_als == 1:
-                        np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_alsrate_%s_epochrand_%s_seed_%s_acc_%s.csv'
-                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.als_rate, self.epoch_random,
+                    if self.flag_als >= 1:
+                        np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_layer_aug_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s_acc_%s.csv'
+                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.layer_aug, self.als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial,
                                       self.seed, top1_avg_max),
                                    results, delimiter=',')
                     else:
-                        np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_randlayer_%s_seed_%s_acc_%s.csv'
-                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.flag_random_layer, self.seed, top1_avg_max),
+                        np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_layer_aug_%s_randlayer_%s_seed_%s_acc_%s.csv'
+                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.layer_aug, self.flag_random_layer, self.seed, top1_avg_max),
                                    results, delimiter=',')
 
-                if self.flag_var == 1:
-                    np.savetxt('results/var/var_class_train_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_randlayer_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.flag_random_layer, self.seed),
-                               self.feature_var_class_train, delimiter=',')
-                    np.savetxt('results/var/var_train_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_randlayer_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.flag_random_layer, self.seed),
-                               self.feature_var_train, delimiter=',')
-                    np.savetxt('results/var/var_class_test_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_randlayer_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.flag_random_layer, self.seed),
-                               self.feature_var_class_test, delimiter=',')
-                    np.savetxt('results/var/var_test_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_dropout_%s_layer_aug_%s_layer_drop_%s_randlayer_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_dropout, self.layer_aug, self.layer_drop, self.flag_random_layer, self.seed),
-                               self.feature_var_test, delimiter=',')
-
                 if self.flag_random_layer == 1:
-                    if self.flag_als == 1:
-                        np.savetxt('results/random/layer_rate_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_seed_%s.csv'
-                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.seed),
+                    if self.flag_als >= 1:
+                        np.savetxt('results/random/layer_rate_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s.csv'
+                                   % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial, self.seed),
                                    self.layer_rate_all, delimiter=',')
-                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.seed),
+                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_seed_%s.csv'
+                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.seed),
                                self.aug_layer_count_all, delimiter=',')
