@@ -497,7 +497,7 @@ class MainNN(object):
 
                     loss_greedy_als_sum = loss_greedy_als_sum + loss_greedy_als
                     if (self.iter + 1) % self.iter_interval == 0:
-                        """
+
                         if self.flag_adversarial == 1:
                             layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
                         else:
@@ -507,7 +507,7 @@ class MainNN(object):
                             layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
                         else:
                             layer_aug = np.argmin(loss_greedy_als_sum)
-
+                        """
                         loss_greedy_als_sum = np.zeros(self.num_layer)
                 elif (self.flag_als == 1 or self.flag_als == 2) and flag_als > 0:  # ALS or naive-ALS:
                     layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
@@ -777,6 +777,6 @@ class MainNN(object):
                         np.savetxt('results/random/layer_rate_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s.csv'
                                    % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial, self.seed),
                                    self.layer_rate_all, delimiter=',')
-                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.seed),
+                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_flagaug_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s.csv'
+                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.flag_myaug_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial, self.seed),
                                self.aug_layer_count_all, delimiter=',')
