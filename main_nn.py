@@ -378,20 +378,23 @@ class MainNN(object):
         layer_rate_mean = np.zeros(self.num_layer)
         loss_greedy_als = np.zeros(self.num_layer)
         loss_greedy_als_sum = np.zeros(self.num_layer)
+
         if self.flag_als >= 1:
             sum = 0
-            """
+
             for i in range(self.num_layer - 1):
                 layer_rate[i] = 1.0 / self.num_layer
                 sum = sum + layer_rate[i]
             layer_rate[self.num_layer - 1] = 1.0 - sum
-            """
 
+            """
             layer_rate[0] = 1 - self.als_rate
             for i in range(self.num_layer - 1):
                 layer_rate[i + 1] = self.als_rate / (self.num_layer - 1)
-
+            """
             self.layer_rate_all = np.zeros((self.num_epochs, self.num_layer))
+
+            self.flag_random_layer = 1
 
         """初期化"""
         if self.flag_acc5 == 1:
@@ -458,7 +461,6 @@ class MainNN(object):
                     loss_training_before = criterion.forward(outputs_als, labels_als)
                     loss_training_before_all = loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計
 
-                model.train()
                 steps += 1
                 if np.array(images.data).ndim == 3:
                     images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
@@ -477,7 +479,8 @@ class MainNN(object):
                         flag_als = 1
 
                 layer_aug = 0
-                if self.flag_als == 3:  # greedy-ALS
+                if self.flag_als == 3 and flag_als == 1:  # greedy-ALS
+                    model.eval()
                     for j in range(self.num_layer):
                         # outputs, labels_new = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using training data
                         outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using test data
@@ -494,24 +497,30 @@ class MainNN(object):
 
                     loss_greedy_als_sum = loss_greedy_als_sum + loss_greedy_als
                     if (self.iter + 1) % self.iter_interval == 0:
+                        """
                         if self.flag_adversarial == 1:
+                            layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
+                        else:
+                            layer_aug = np.argmin(loss_greedy_als_sum)
+                        """
+                        if epoch < 50:
                             layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
                         else:
                             layer_aug = np.argmin(loss_greedy_als_sum)
 
                         loss_greedy_als_sum = np.zeros(self.num_layer)
+                elif (self.flag_als == 1 or self.flag_als == 2) and flag_als > 0:  # ALS or naive-ALS:
+                    layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
                 else:
                     if self.flag_randaug == 1:
-                        if flag_als == 1:
-                            layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
-                        else:
-                            layer_aug = np.random.randint(self.num_layer)
+                        layer_aug = np.random.randint(self.num_layer)
                     else:
                         layer_aug = self.layer_aug
 
                     if self.flag_dropout == 1:
                         layer_drop = np.random.randint(self.num_layer)
 
+                model.train()
                 outputs, labels = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=layer_aug, flag_dropout=self.flag_dropout,
                                         layer_drop=self.layer_drop, flag_track=1)
 
