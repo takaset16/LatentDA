@@ -20,9 +20,9 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
 --loop 0　繰り返し実行の指定  
   
   
-<span style="color: red; ">--n_aug 9でガウシアンノイズ</span>  
+**--n_aug 9でガウシアンノイズ</span>**  
   
---wandb 1でweights and biases利用  
+**--wandb 1でweights and biases利用**  
 wandb login  
 wandb on  
 が必要(?)  
