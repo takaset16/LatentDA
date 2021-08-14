@@ -1,6 +1,6 @@
 # LatentDA
 
-ABCIでrun.sh(インタラクティブノードでbash run.shを実行)かrun_cifar10_full1.sh(バッチジョブ)を実行  
+ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh(バッチジョブ)を実行  
   
 --n_model ニューラルネットワークモデル   
 --n_data データセット  
