@@ -15,7 +15,7 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
 --epoch_random 学習開始後何エポックの間ランダムにDA層を選ぶかの指定  
 --iter_interval ステップ平均を計算するステップ数  
 --flag_wandb weights and biasesを用いる場合1 (default:0)  
---save_file 結果のファイルを出力しない場合0 (default:0)  
+--save_file 結果のファイルを出力しない場合0 (default:1)  
 --gpu_multi マルチGPUを使う場合1  
 --loop 0　繰り返し実行の指定  
   
