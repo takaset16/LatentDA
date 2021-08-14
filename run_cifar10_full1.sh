@@ -11,9 +11,9 @@ source ~/venv/pytorch/bin/activate
 
 for s in 0 1 2 3 4
   do
-  python main.py --n_model 'CNN' --n_data 'CIFAR-10' --num_epochs 200 --flag_myaug_training 1 --flag_random_layer 1 --n_aug 1 --flag_als 1 --als_rate 0.001 --flag_adversarial 1 --gpu_multi 0 --loop $s
-  python main.py --n_model 'CNN' --n_data 'CIFAR-10' --num_epochs 200 --flag_myaug_training 1 --flag_random_layer 1 --n_aug 5 --flag_als 1 --als_rate 0.001 --flag_adversarial 1 --gpu_multi 0 --loop $s
-  python main.py --n_model 'CNN' --n_data 'CIFAR-10' --num_epochs 200 --flag_myaug_training 1 --flag_random_layer 1 --n_aug 6 --flag_als 1 --als_rate 0.001 --flag_adversarial 1 --gpu_multi 0 --loop $s
+  python main.py --n_model 'CNN' --n_data 'CIFAR-10' --num_epochs 200 --flag_random_layer 1 --n_aug 1 --flag_als 1 --als_rate 0.001 --flag_adversarial 1 --gpu_multi 0 --loop $s
+  python main.py --n_model 'CNN' --n_data 'CIFAR-10' --num_epochs 200 --flag_random_layer 1 --n_aug 5 --flag_als 1 --als_rate 0.001 --flag_adversarial 1 --gpu_multi 0 --loop $s
+  python main.py --n_model 'CNN' --n_data 'CIFAR-10' --num_epochs 200 --flag_random_layer 1 --n_aug 6 --flag_als 1 --als_rate 0.001 --flag_adversarial 1 --gpu_multi 0 --loop $s
   done
 
 deactivate

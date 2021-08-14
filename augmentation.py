@@ -9,9 +9,17 @@ import util
 
 def random_noise(image):
     noise_scale = 0.001
-    noise = np.random.randn(np.array(image.data).shape[0], np.array(image.data).shape[1], np.array(image.data).shape[2], np.array(image.data).shape[3])  # ノイズ生成
+    if image.ndim == 4:
+        n, c, h, w = image.shape
+        # noise = np.random.randn(n, c, h, w)
+        noise = torch.normal(mean=0, std=1, size=(n, c, h, w))
+    elif image.ndim == 2:
+        n, w = image.shape
+        # noise = np.random.randn(n, w)
+        noise = torch.normal(mean=0, std=1, size=(n, w))
 
-    image = image + util.to_var(torch.from_numpy(noise_scale * noise).float())
+    # image = image + util.to_var(torch.from_numpy(noise_scale * noise).float())
+    image = image + util.to_var((noise_scale * noise).float())
 
     # util.save_images(image)  # 画像保存
 

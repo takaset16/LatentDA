@@ -5,7 +5,6 @@ import numpy as np
 import cv2
 import sklearn.utils
 import augmentation
-import augmentations
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional
@@ -102,32 +101,10 @@ def run_n_aug(x, y, n_aug, num_classes):
         x, y = augmentation.ricap(image_batch=x, label_batch=y, num_classes=num_classes)
         x = to_var(x)
         y = to_var(y)
-    elif n_aug == 12:
-        x = augmentation.horizontal_flip(x)
-        x = augmentation.random_crop(x)
-    elif n_aug == 34:
-        x = augmentation.random_transfer(x)
-        x = augmentation.random_rotation(x)
+    elif n_aug == 9:
+        x = augmentation.random_noise(x)
 
     return x, y
-
-
-def run_n_aug_random(x, y):
-    flag_onehot = 0
-
-    n_rand = np.random.randint(5)
-    if n_rand == 0:
-        x = augmentation.horizontal_flip(x)
-    elif n_rand == 1:
-        x = augmentation.random_crop(x)
-    elif n_rand == 2:
-        x = augmentation.random_transfer(x)
-    elif n_rand == 3:
-        x = augmentation.cutout(x)
-    elif n_rand == 4:
-        x = augmentation.random_erasing(x)
-
-    return x, y, flag_onehot
 
 
 def save_images(images):

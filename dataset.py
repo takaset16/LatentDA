@@ -1,12 +1,11 @@
 # coding: utf-8
+import numpy as np
 import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import ConcatDataset
-
 from RandAugment import RandAugment
 import util
-from augmentations import *
 
 _IMAGENET_PCA = {
     'eigval': [0.2175, 0.0188, 0.0045],
