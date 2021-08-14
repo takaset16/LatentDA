@@ -22,7 +22,7 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
   
 --n_aug 9でガウシアンノイズ  
   
---wandb 1でweights and biases利用で  
+--wandb 1でweights and biases利用  
 wandb login  
 wandb on  
 が必要(?)  
