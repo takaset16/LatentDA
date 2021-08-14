@@ -9,7 +9,7 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
 --num_samples 利用する訓練サンプル数 (0で全データ利用)(default:0)  
 --n_aug Data augmentationの種類 (0でDAなし)  
 --flag_random_layer ALSを行わず、ランダムにDA層を選ぶ場合1  
---flag_als ALSの指定 (0でALS行わない)  
+--flag_als ALSの指定 (0でALS行わない, 1で通常ALS, 2でnaive, 3でgreedy)  
 --als_rate ALSの更新の係数  
 --flag_adversarial Adversarialにする場合1  
 --epoch_random 学習開始後何エポックの間ランダムにDA層を選ぶかの指定  
