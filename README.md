@@ -17,9 +17,9 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
 --flag_wandb weights and biasesを用いる場合1 (default:0)  
 --save_file 結果のファイルを出力しない場合0 (default:0)  
 --gpu_multi マルチGPUを使う場合1  
---loop 0　繰り返し実行の指定  
-  
-  
+--loop 0　繰り返し実行の指定    
+
+
 --n_aug 9でガウシアンノイズ  
   
 --wandb 1でweights and biases利用で  
