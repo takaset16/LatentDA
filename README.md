@@ -11,7 +11,7 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
 --flag_random_layer ALSを行わず、ランダムにDA層を選ぶ場合1  
 --flag_als ALSの指定 (0でALS行わない, 1で通常ALS, 2でnaive, 3でgreedy)  
 --als_rate ALSの更新の係数  
---flag_adversarial Adversarialにする場合1  
+--flag_adversarial adversarialにする場合1  
 --epoch_random 学習開始後何エポックの間ランダムにDA層を選ぶかの指定  
 --iter_interval ステップ平均を計算するステップ数  
 --flag_wandb weights and biasesを用いる場合1 (default:0)  
