@@ -16,6 +16,9 @@ class MLPNet(nn.Module):
         self.fc2 = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x, y, n_aug=0, layer_aug=0, flag_dropout=0, layer_drop=0, flag_track=1):
+        if x.ndim > 2:
+            x = x.reshape(x.size(0), -1)
+
         if n_aug >= 1 and layer_aug == 0:
             x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
         x = self.fc1(x)

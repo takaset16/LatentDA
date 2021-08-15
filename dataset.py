@@ -179,7 +179,7 @@ class MyDataset_training(Dataset):
         num_classes = 10
         size_after_cnn = 4
         input_size = 0
-        hidden_size = 0
+        hidden_size = 1000
 
         if n_data == 'MNIST':  # MNIST
             num_channel = 1
