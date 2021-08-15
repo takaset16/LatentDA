@@ -25,5 +25,3 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
   
 **--flag_wandb 1でweights and biases利用**  
 wandb login  
-wandb on  
-が必要(?)  
