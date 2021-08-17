@@ -40,7 +40,7 @@ def main():
     parser.add_argument('--rand_m', type=int, default=0)
     parser.add_argument('--flag_lars', type=int, default=0)
     parser.add_argument('--lb_smooth', type=float, default=0.0)
-    parser.add_argument('--flag_lr_schedule', type=int, default=2)
+    parser.add_argument('--flag_lr_schedule', type=int, default=1)
     parser.add_argument('--flag_warmup', type=int, default=1)
     parser.add_argument('--layer_aug', type=int, default=0)
     parser.add_argument('--layer_drop', type=int, default=0)

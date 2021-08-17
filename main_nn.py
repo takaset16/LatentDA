@@ -316,16 +316,16 @@ class MainNN(object):
 
         """学習率スケジューリング"""
         scheduler = None
-        if self.flag_lr_schedule == 2:  # CosineAnnealingLR
+        if self.flag_lr_schedule == 1:  # CosineAnnealingLR
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.num_epochs, eta_min=0.)
-        elif self.flag_lr_schedule == 3:  # MultiStepLR
+        elif self.flag_lr_schedule == 2:  # MultiStepLR
             if self.num_epochs == 90:
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [30, 60, 80])
             elif self.num_epochs == 180 or self.num_epochs == 200:
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [60, 120, 160])
             elif self.num_epochs == 270:
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [90, 180, 240])
-        elif self.flag_lr_schedule == 4:  # StepLR
+        elif self.flag_lr_schedule == 3:  # StepLR
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
 
         if self.flag_warmup == 1:  # Warmup
@@ -348,7 +348,7 @@ class MainNN(object):
                 multiplier = 2
                 total_epoch = 3
 
-            scheduler_wup = GradualWarmupScheduler(
+            scheduler = GradualWarmupScheduler(
                 optimizer,
                 multiplier=multiplier,
                 total_epoch=total_epoch,
@@ -695,16 +695,13 @@ class MainNN(object):
 
             loss_test_each = loss_test_all / num_test_data  # サンプル1つあたりの誤差
 
+            """学習率スケジューリング"""
+            if scheduler is not None:
+                scheduler.step(epoch - 1 + float(steps) / total_steps)
+
             """計算時間"""
             end_epoch_time = timeit.default_timer()
             epoch_time = end_epoch_time - start_epoch_time
-
-            """学習率スケジューリング"""
-            if self.flag_lr_schedule > 1 and scheduler is not None:
-                if self.flag_warmup == 1:
-                    scheduler_wup.step(epoch - 1 + float(steps) / total_steps)
-                else:
-                    scheduler.step(epoch - 1 + float(steps) / total_steps)
 
             """Show results for each epoch"""
             flag_log = 1
