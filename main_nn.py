@@ -701,7 +701,10 @@ class MainNN(object):
 
             """学習率スケジューリング"""
             if self.flag_lr_schedule > 1 and scheduler is not None:
-                scheduler_wup.step(epoch - 1 + float(steps) / total_steps)
+                if self.flag_warmup == 1:
+                    scheduler_wup.step(epoch - 1 + float(steps) / total_steps)
+                else:
+                    scheduler.step(epoch - 1 + float(steps) / total_steps)
 
             """Show results for each epoch"""
             flag_log = 1
