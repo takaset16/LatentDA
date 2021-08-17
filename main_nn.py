@@ -2,10 +2,10 @@
 import timeit
 import wandb
 from warmup_scheduler import GradualWarmupScheduler
-
 import objective
 import dataset
 from models import *
+import matplotlib.pyplot as plt
 
 
 class MainNN(object):
@@ -171,15 +171,6 @@ class MainNN(object):
             pretrained = False
             num_classes = self.num_classes
 
-        """Hyperparameter setting"""
-        if self.n_model == 'MLP' or self.n_model == 'CNN' or self.num_training_data != 0:
-            self.flag_lr_schedule = 0
-            self.flag_acc5 = 0
-            self.opt = 0  # Adam
-
-        if self.flag_lr_schedule == 0:
-            self.flag_warmup = 0
-
         """neural network model"""
         model = None
         if self.n_model == 'MLP':
@@ -285,7 +276,7 @@ class MainNN(object):
         else:
             if self.opt == 0:  # Adam
                 if self.flag_transfer == 1:  # Transfer learning
-                    optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.001)  # transfer learning
+                    optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.001)
                 else:
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
             elif self.opt == 1:  # SGD
@@ -305,8 +296,11 @@ class MainNN(object):
                 elif self.n_model == 'PyramidNet':
                     lr = 0.05
                     weight_decay = 0.00005
+                elif self.n_model == 'MLP':
+                    lr = 0.02
+                    weight_decay = 0.0005
                 else:
-                    lr = 0.1
+                    lr = 0.01
                     weight_decay = 0.0005
 
                 optimizer = torch.optim.SGD(
@@ -331,6 +325,8 @@ class MainNN(object):
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [60, 120, 160])
             elif self.num_epochs == 270:
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [90, 180, 240])
+        elif self.flag_lr_schedule == 4:  # StepLR
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
 
         if self.flag_warmup == 1:  # Warmup
             if self.n_model == 'ResNet' or self.n_model == 'EfficientNet':
@@ -352,7 +348,7 @@ class MainNN(object):
                 multiplier = 2
                 total_epoch = 3
 
-            scheduler = GradualWarmupScheduler(
+            scheduler_wup = GradualWarmupScheduler(
                 optimizer,
                 multiplier=multiplier,
                 total_epoch=total_epoch,
@@ -370,7 +366,7 @@ class MainNN(object):
         elif self.n_model == 'WideResNet':
             self.num_layer = 6
         elif self.n_model == 'MLP':
-            self.num_layer = 2
+            self.num_layer = 3
 
         """ALS"""
         layer_rate = np.zeros(self.num_layer)
@@ -623,6 +619,7 @@ class MainNN(object):
                 self.iter += 1
 
             loss_training_each = loss_training_all / num_training_data  # サンプル1つあたりの誤差
+            learning_rate = optimizer.param_groups[0]['lr']
 
             if self.flag_als >= 1:
                 self.layer_rate_all[epoch] = layer_rate
@@ -704,7 +701,7 @@ class MainNN(object):
 
             """学習率スケジューリング"""
             if self.flag_lr_schedule > 1 and scheduler is not None:
-                scheduler.step(epoch - 1 + float(steps) / total_steps)
+                scheduler_wup.step(epoch - 1 + float(steps) / total_steps)
 
             """Show results for each epoch"""
             flag_log = 1
@@ -729,10 +726,12 @@ class MainNN(object):
                               format(epoch + 1, self.num_epochs, loss_training_each, top1_avg, loss_test_each, epoch_time))
 
             if self.flag_wandb == 1:
-                wandb.log({"loss_training": loss_training_each},step=epoch)
-                wandb.log({"test_acc": top1_avg},step=epoch)
-                wandb.log({"loss_test": loss_test_each},step=epoch)
-                wandb.log({"epoch_time": epoch_time},step=epoch)
+                wandb.log({"loss_training": loss_training_each}, step=epoch)
+                wandb.log({"test_acc": top1_avg}, step=epoch)
+                wandb.log({"loss_test": loss_test_each}, step=epoch)
+                wandb.log({"epoch_time": epoch_time}, step=epoch)
+                # print(learning_rate)
+                wandb.log({"learning_rate": learning_rate}, step=epoch)
 
                 if self.flag_als >= 1:
                     for i in range(self.num_layer):
