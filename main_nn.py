@@ -539,7 +539,11 @@ class MainNN(object):
                 """Update weights"""
                 optimizer.zero_grad()
                 loss_training.backward()
+
+                """Update learning rate"""
                 optimizer.step()
+                if scheduler is not None:
+                    scheduler.step(epoch - 1 + float(steps) / total_steps)
 
                 if self.flag_horovod == 1:
                     train_loss.update(loss_training.cpu())
@@ -694,10 +698,6 @@ class MainNN(object):
                 top1_avg = 100.0 * correct / total  # 正解率を計算
 
             loss_test_each = loss_test_all / num_test_data  # サンプル1つあたりの誤差
-
-            """学習率スケジューリング"""
-            if scheduler is not None:
-                scheduler.step(epoch - 1 + float(steps) / total_steps)
 
             """計算時間"""
             end_epoch_time = timeit.default_timer()
