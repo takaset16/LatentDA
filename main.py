@@ -18,14 +18,14 @@ def main():
     parser.add_argument('--loop', type=int, default=0)
     parser.add_argument('--n_data', default='CIFAR-10')
     parser.add_argument('--gpu_multi', type=int, default=0)
-    parser.add_argument('--hidden_size', type=int, default=100)
+    parser.add_argument('--hidden_size', type=int, default=0)
     parser.add_argument('--num_samples', type=int, default=0)
     parser.add_argument('--num_epochs', type=int, default=200)
     parser.add_argument('--batch_size_training', type=int, default=256)
     parser.add_argument('--batch_size_test', type=int, default=1024)
     parser.add_argument('--n_model', default='CNN')
     parser.add_argument('--opt', type=int, default=1)
-    parser.add_argument('--save_file', type=int, default=0)
+    parser.add_argument('--save_file', type=int, default=1)
     parser.add_argument('--show_params', type=int, default=0)
     parser.add_argument('--save_images', type=int, default=0)
     parser.add_argument('--flag_wandb', type=int, default=1)
@@ -46,8 +46,6 @@ def main():
     parser.add_argument('--layer_drop', type=int, default=0)
     parser.add_argument('--flag_random_layer', type=int, default=0)
     parser.add_argument('--flag_traintest', type=int, default=0)
-    parser.add_argument('--flag_var', type=float, default=0)
-    parser.add_argument('--batch_size_variance', type=int, default=256)
     parser.add_argument('--flag_als', type=int, default=0)
     parser.add_argument('--als_rate', type=float, default=0.001)
     parser.add_argument('--epoch_random', type=int, default=0)
@@ -90,8 +88,6 @@ def main():
                                  layer_drop=args.layer_drop,
                                  flag_random_layer=args.flag_random_layer,
                                  flag_traintest=args.flag_traintest,
-                                 flag_var=args.flag_var,
-                                 batch_size_variance=args.batch_size_variance,
                                  flag_als=args.flag_als,
                                  als_rate=args.als_rate,
                                  epoch_random=args.epoch_random,
