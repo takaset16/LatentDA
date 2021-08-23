@@ -459,7 +459,7 @@ class MainNN(object):
                 if (self.flag_als == 1 or self.flag_als == 2) and epoch >= self.epoch_random:  # ALS or naive-ALS:
                     layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
 
-                elif self.flag_als == 3 and flag_als == 1 and epoch >= self.epoch_random:  # greedy-ALS
+                elif self.flag_als == 3 and epoch >= self.epoch_random:  # greedy-ALS
                     model.eval()
                     for j in range(self.num_layer):
                         # outputs, labels_new = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using training data
