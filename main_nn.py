@@ -109,7 +109,7 @@ class MainNN(object):
                                                        flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout)
         self.num_channel, self.num_classes, self.size_after_cnn, self.input_size, hidden_size = traintest_dataset.get_info(n_data=self.n_data)
         if self.hidden_size == 0:
-            hidden_size = self.hidden_size
+            self.hidden_size = hidden_size
 
         if self.flag_traintest == 1:
             n_samples = len(traintest_dataset)
