@@ -51,10 +51,12 @@ def main():
     parser.add_argument('--epoch_random', type=int, default=0)
     parser.add_argument('--iter_interval', type=int, default=1)
     parser.add_argument('--flag_adversarial', type=int, default=0)
+    parser.add_argument('--flag_alstest', type=int, default=1)
+    parser.add_argument('--flag_als_acc', type=int, default=0)
     args = parser.parse_args()
 
     if args.flag_wandb == 1:  # Weights and Biases
-        wandb.init(project="LatentDA", config=args)
+        wandb.init(project="LatentDA_003", config=args)
         args = wandb.config
 
     main_params = main_nn.MainNN(loop=args.loop,
@@ -92,7 +94,9 @@ def main():
                                  als_rate=args.als_rate,
                                  epoch_random=args.epoch_random,
                                  iter_interval=args.iter_interval,
-                                 flag_adversarial=args.flag_adversarial
+                                 flag_adversarial=args.flag_adversarial,
+                                 flag_alstest=args.flag_alstest,
+                                 flag_als_acc=args.flag_als_acc
                                  )
     main_params.run_main()
 

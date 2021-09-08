@@ -13,7 +13,7 @@ class MainNN(object):
                  n_model, opt, save_file, show_params, save_images, flag_acc5, flag_horovod, cutout, n_aug,
                  flag_dropout, flag_transfer, flag_randaug, rand_n, rand_m,
                  flag_lars, lb_smooth, flag_lr_schedule, flag_warmup, layer_aug, layer_drop, flag_random_layer, flag_wandb,
-                 flag_traintest, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial):
+                 flag_traintest, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial, flag_alstest, flag_als_acc):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
@@ -70,6 +70,8 @@ class MainNN(object):
         self.epoch_random = epoch_random
         self.iter_interval = iter_interval
         self.flag_adversarial = flag_adversarial
+        self.flag_alstest = flag_alstest
+        self.flag_als_accuracy = flag_als_acc
 
     def run_main(self):
         if self.flag_horovod == 1:
@@ -107,6 +109,8 @@ class MainNN(object):
         """dataset"""
         traintest_dataset = dataset.MyDataset_training(n_data=self.n_data, num_data=self.num_training_data, seed=self.seed,
                                                        flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout)
+        als_dataset = dataset.MyDataset_als(n_data=self.n_data, num_data=self.num_training_data, seed=self.seed,
+                                            flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout)
         self.num_channel, self.num_classes, self.size_after_cnn, self.input_size, hidden_size = traintest_dataset.get_info(n_data=self.n_data)
         if self.hidden_size == 0:
             self.hidden_size = hidden_size
@@ -120,16 +124,19 @@ class MainNN(object):
 
             train_sampler = None
             test_sampler = None
+            als_sampler = None
         else:
             train_dataset = traintest_dataset
             test_dataset = dataset.MyDataset_test(n_data=self.n_data)
 
             train_sampler = train_dataset.sampler
             test_sampler = test_dataset.sampler
+            als_sampler = test_dataset.sampler
 
         num_workers = 16
         train_shuffle = True
         test_shuffle = False
+        als_shuffle = True
 
         if self.flag_horovod == 1:
             num_workers = 4
@@ -137,21 +144,25 @@ class MainNN(object):
 
             train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
             test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+            als_sampler = torch.utils.data.distributed.DistributedSampler(als_dataset, num_replicas=hvd.size(), rank=hvd.rank())
 
         if train_sampler:
             train_shuffle = False
         if test_sampler:
             test_shuffle = False
-        test_shuffle = False
+        if als_sampler:
+            als_shuffle = False
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size_training, sampler=train_sampler,
                                                         shuffle=train_shuffle, num_workers=num_workers, pin_memory=True)
         self.test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
                                                        shuffle=test_shuffle, num_workers=num_workers, pin_memory=True)
-        self.als_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
-                                                      shuffle=True, num_workers=num_workers, pin_memory=True)
-        # self.als_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size_test, sampler=train_sampler,
-        #                                               shuffle=True, num_workers=num_workers, pin_memory=True)
+        if self.flag_alstest == 1:
+            self.als_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
+                                                          shuffle=True, num_workers=num_workers, pin_memory=True)
+        else:
+            self.als_loader = torch.utils.data.DataLoader(dataset=als_dataset, batch_size=self.batch_size_test, sampler=als_sampler,
+                                                          shuffle=True, num_workers=num_workers, pin_memory=True)
 
         """Transfer learning"""
         if self.flag_transfer == 1:
@@ -363,7 +374,7 @@ class MainNN(object):
         func_sign_random = np.zeros(self.num_layer)
         func_sign_mean = np.zeros(self.num_layer)
         loss_naive_mean = np.zeros(self.num_layer)
-        loss_greedy_als_sum = np.zeros(self.num_layer)
+        values_greedy_als = np.zeros(self.num_layer)
 
         """Decide an initial als_rate"""
         if self.flag_als >= 1:
@@ -383,7 +394,7 @@ class MainNN(object):
 
             self.flag_random_layer = 1
 
-        """初期化"""
+        """Initialization"""
         if self.flag_acc5 == 1:
             results = np.zeros((self.num_epochs, 5))  # 結果保存用
         else:
@@ -391,6 +402,7 @@ class MainNN(object):
         start_time = timeit.default_timer()
 
         aug_layer_count = np.zeros(self.num_layer, dtype=int)
+        aug_layer_count_interval = np.zeros(self.num_layer, dtype=int)
         self.aug_layer_count_all = np.zeros((self.num_epochs, self.num_layer), dtype=int)
 
         images_als_origin = None
@@ -399,7 +411,7 @@ class MainNN(object):
         layer_aug = 0
 
         for epoch in range(self.num_epochs):
-            """学習"""
+            """Training"""
             start_epoch_time = timeit.default_timer()
             train_loss = None
             if self.flag_horovod == 1:
@@ -413,37 +425,37 @@ class MainNN(object):
             steps = 0
             num_training_data = 0
 
-            for i, (images, labels, _) in enumerate(self.als_loader):
-                if i == 0:
-                    if np.array(images.data).ndim == 3:
-                        images_als_origin = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
-                    else:
-                        images_als_origin = images.to(device)
-                    labels_als_origin = labels.to(device)
+            if self.flag_als >= 1:
+                for i, (images, labels, _) in enumerate(self.als_loader):
+                    if i == 0:
+                        if np.array(images.data).ndim == 3:
+                            images_als_origin = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
+                        else:
+                            images_als_origin = images.to(device)
+                        labels_als_origin = labels.to(device)
 
-                    break
+                        break
 
             for i, (images, labels, _) in enumerate(self.train_loader):
-                loss_training_before_all = 0
-                loss_training_after_all = 0
+                values_als_before = 0
+                values_als_after = 0
 
                 """ALS process before weight update"""
                 if self.flag_als == 1:
                     model.eval()
+                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)
 
-                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)  # if using test data
-                    """
-                    if self.n_aug == 1 or self.n_aug == 5:
-                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=6, layer_aug=0, flag_track=0)
+                    if self.flag_als_accuracy == 1:  # if accuracy is used instead of loss for ALS
+                        _, predicted = torch.max(outputs_als.data, 1)
+                        correct_als = (predicted == labels_als.long()).sum().item()
+                        total_als = labels_als.size(0)
+                        values_als_before = 100.0 * correct_als / total_als
                     else:
-                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=1, layer_aug=0, flag_track=0)
-                    """
+                        if labels_als.ndim == 1:
+                            labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one-hot表現に変換
 
-                    if labels_als.ndim == 1:
-                        labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one-hot表現に変換
-
-                    loss_training_before = criterion.forward(outputs_als, labels_als)
-                    loss_training_before_all = loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計
+                        loss_training_before = criterion.forward(outputs_als, labels_als)
+                        values_als_before = loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計
 
                 steps += 1
                 if np.array(images.data).ndim == 3:
@@ -462,32 +474,32 @@ class MainNN(object):
                 elif self.flag_als == 3 and epoch >= self.epoch_random:  # greedy-ALS
                     model.eval()
                     for j in range(self.num_layer):
-                        # outputs, labels_new = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using training data
-                        outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=j, flag_track=0)  # if using test data
-                        """
-                        if self.n_aug == 1 or self.n_aug == 5:
-                            outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=6, layer_aug=j, flag_track=0)
-                        else:
-                            outputs, labels_new = model(x=images_als_origin, y=labels_als_origin, n_aug=1, layer_aug=j, flag_track=0)
-                        """
-                        if labels_new.ndim == 1:
-                            labels_new = torch.eye(self.num_classes, device='cuda')[labels_new].clone()  # one hot表現に変換
+                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=j, flag_track=0)
 
-                        loss_greedy_als_sum[j] = loss_greedy_als_sum[j] + criterion.forward(outputs, labels_new).item()
+                        if self.flag_als_accuracy == 1:
+                            _, predicted = torch.max(outputs_als.data, 1)
+                            correct_als = (predicted == labels_als_origin.long()).sum().item()
+                            total_als = labels_als_origin.size(0)
+                            values_greedy_als[j] = values_greedy_als[j] + 100.0 * correct_als / total_als
+                        else:
+                            if labels_als.ndim == 1:
+                                labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
+
+                            values_greedy_als[j] = values_greedy_als[j] + criterion.forward(outputs_als, labels_als).item()
 
                     if (self.iter + 1) % self.iter_interval == 0:
                         if self.flag_adversarial == 1:
-                            layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
+                            layer_aug = np.argmax(values_greedy_als)
                         else:
-                            layer_aug = np.argmin(loss_greedy_als_sum)
+                            layer_aug = np.argmin(values_greedy_als)
                         """
                         if epoch < 50:
-                            layer_aug = np.argmax(loss_greedy_als_sum)  # reverse
+                            layer_aug = np.argmax(values_greedy_als)  # reverse
                         else:
-                            layer_aug = np.argmin(loss_greedy_als_sum)
+                            layer_aug = np.argmin(values_greedy_als)
                         """
 
-                        loss_greedy_als_sum = np.zeros(self.num_layer)
+                        values_greedy_als = np.zeros(self.num_layer)
                 else:
                     if self.flag_random_layer == 1:
                         layer_aug = np.random.randint(self.num_layer)
@@ -504,7 +516,7 @@ class MainNN(object):
                 outputs, labels = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=layer_aug, flag_track=1)
 
                 if labels.ndim == 1:
-                    labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # one hot表現に変換
+                    labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # To one-hot
 
                 loss_training = criterion.forward(outputs, labels)  # default
 
@@ -531,14 +543,19 @@ class MainNN(object):
                 if self.flag_als == 1:
                     model.eval()
 
-                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)  # if using test data
-                    # outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=0, flag_track=0)  # use the same DA parameters
+                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)
 
-                    if labels_als.ndim == 1:
-                        labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one hot表現に変換
+                    if self.flag_als_accuracy == 1:
+                        _, predicted = torch.max(outputs_als.data, 1)
+                        correct_als = (predicted == labels_als_origin.long()).sum().item()
+                        total_als = labels_als_origin.size(0)
+                        values_als_after = 100.0 * correct_als / total_als
+                    else:
+                        if labels_als.ndim == 1:
+                            labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
 
-                    loss_training_after = criterion.forward(outputs_als, labels_als)
-                    loss_training_after_all += loss_training_after.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計を足していく
+                        loss_training_after = criterion.forward(outputs_als, labels_als)
+                        values_als_after = loss_training_after.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計を足していく
 
                     """Ver1.0"""
                     """
@@ -550,7 +567,7 @@ class MainNN(object):
                     """
 
                     """Ver1.1"""
-                    delta_loss = loss_training_before_all - loss_training_after_all
+                    delta_loss = values_als_before - values_als_after
                     if epoch < self.epoch_random:
                         if delta_loss > 0:
                             func_sign_random[layer_aug] = func_sign_random[layer_aug] + 1
@@ -573,21 +590,36 @@ class MainNN(object):
                             func_sign = -1
 
                         func_sign_mean[layer_aug] = func_sign_mean[layer_aug] + func_sign
+                        aug_layer_count_interval[layer_aug] = aug_layer_count_interval[layer_aug] + 1
 
                         if (self.iter + 1) % self.iter_interval == 0:
                             if self.flag_adversarial == 1:
-                                layer_rate = layer_rate - self.als_rate * func_sign_mean / self.iter_interval  # reverse
+                                # layer_rate = layer_rate - self.als_rate * func_sign_mean / self.iter_interval
+                                for j in range(self.num_layer):
+                                    if aug_layer_count_interval[j] > 0:
+                                        layer_rate[j] = layer_rate[j] - self.als_rate * func_sign_mean[j] / aug_layer_count_interval[j]
                             else:
-                                layer_rate = layer_rate + self.als_rate * func_sign_mean / self.iter_interval
+                                # layer_rate = layer_rate + self.als_rate * func_sign_mean / self.iter_interval
+                                for j in range(self.num_layer):
+                                    if aug_layer_count_interval[j] > 0:
+                                        layer_rate[j] = layer_rate[j] + self.als_rate * func_sign_mean[j] / aug_layer_count_interval[j]
 
                 elif self.flag_als == 2:  # naive ALS
                     loss_naive_mean[layer_aug] = loss_naive_mean[layer_aug] - self.als_rate * loss_naive_als
+                    aug_layer_count_interval[layer_aug] = aug_layer_count_interval[layer_aug] + 1
 
                     if (self.iter + 1) % self.iter_interval == 0:
                         if self.flag_adversarial == 1:
-                            layer_rate = layer_rate - self.als_rate * loss_naive_mean / self.iter_interval  # reverse
+                            # layer_rate = layer_rate - self.als_rate * loss_naive_mean / self.iter_interval
+                            for j in range(self.num_layer):
+                                if aug_layer_count_interval[j] > 0:
+                                    layer_rate[j] = layer_rate[j] - self.als_rate * loss_naive_mean[j] / aug_layer_count_interval[j]
                         else:
-                            layer_rate = layer_rate + self.als_rate * loss_naive_mean / self.iter_interval
+                            # layer_rate = layer_rate + self.als_rate * loss_naive_mean / self.iter_interval
+                            for j in range(self.num_layer):
+                                if aug_layer_count_interval[j] > 0:
+                                    layer_rate[j] = layer_rate[j] + self.als_rate * loss_naive_mean[j] / aug_layer_count_interval[j]
+
                 elif self.flag_als == 3:  # greedy ALS
                     layer_rate = aug_layer_count_epoch / np.sum(aug_layer_count_epoch)
 
@@ -596,12 +628,13 @@ class MainNN(object):
                         for j in range(self.num_layer):
                             if layer_rate[j] >= 1 - self.als_rate:
                                 layer_rate[j] = 1 - self.als_rate
-                            elif layer_rate[j] <= self.als_rate:
-                                layer_rate[j] = self.als_rate
+                            elif layer_rate[j] <= self.als_rate / self.num_layer:
+                                layer_rate[j] = self.als_rate / self.num_layer
                         layer_rate = layer_rate / np.sum(layer_rate)
 
                         func_sign_mean = np.zeros(self.num_layer)
                         loss_naive_mean = np.zeros(self.num_layer)
+                        aug_layer_count_interval = np.zeros(self.num_layer, dtype=int)
 
                 self.iter += 1
 
@@ -653,7 +686,7 @@ class MainNN(object):
                         total += labels.size(0)
 
                     if labels.ndim == 1:
-                        labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # one hot表現に変換
+                        labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # To one-hot
 
                     loss_test = criterion.forward(outputs, labels)
                     loss_test_all += loss_test.item() * outputs.shape[0]  # ミニバッチ内の誤差の合計を足していく
@@ -682,7 +715,7 @@ class MainNN(object):
 
             loss_test_each = loss_test_all / num_test_data  # サンプル1つあたりの誤差
 
-            """計算時間"""
+            """Run time"""
             end_epoch_time = timeit.default_timer()
             epoch_time = end_epoch_time - start_epoch_time
 
