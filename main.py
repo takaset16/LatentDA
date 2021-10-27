@@ -3,14 +3,14 @@ import argparse
 import main_nn
 import wandb
 
-'''###################################################################################
+'''#############################################################################################
     n_data: 'MNIST', 'CIFAR-10', 'SVHN', 'STL-10', 'CIFAR-100', 'EMNIST', 
             'COIL-20', 'Fashion-MNIST', 'ImageNet', 'TinyImageNet', 
             'Letter', 'Car', 'Epileptic'
     n_aug: 0(None), 1(flips), 2(crop), 3(transfer), 4(rotation), 5(mixup), 
            6(cutout), 7(random erasing), 8(RICAP), 9(random noise)
-    flag_als: 1(ALS), 2(naive-ALS), 3(greedy-ALS)
-####################################################################################'''
+    flag_als: 1(ALS), 2(naive-ALS), 3(greedy-ALS), 4(greedy-ALS+Temp), 5(gradient descent)
+##############################################################################################'''
 
 
 def main():
@@ -25,8 +25,7 @@ def main():
     parser.add_argument('--batch_size_test', type=int, default=1024)
     parser.add_argument('--n_model', default='CNN')
     parser.add_argument('--opt', type=int, default=1)
-    parser.add_argument('--save_file', type=int, default=1)
-    parser.add_argument('--show_params', type=int, default=0)
+    parser.add_argument('--save_file', type=int, default=0)
     parser.add_argument('--save_images', type=int, default=0)
     parser.add_argument('--flag_wandb', type=int, default=1)
     parser.add_argument('--n_aug', type=int, default=0)
@@ -50,13 +49,16 @@ def main():
     parser.add_argument('--als_rate', type=float, default=0.001)
     parser.add_argument('--epoch_random', type=int, default=0)
     parser.add_argument('--iter_interval', type=int, default=1)
-    parser.add_argument('--flag_adversarial', type=int, default=0)
-    parser.add_argument('--flag_alstest', type=int, default=1)
+    parser.add_argument('--flag_adversarial', type=int, default=1)
+    parser.add_argument('--flag_alstest', type=int, default=0)
     parser.add_argument('--flag_als_acc', type=int, default=0)
+    parser.add_argument('--temp', type=float, default=1.0)
+    parser.add_argument('--mean_visual', type=int, default=1)
+    parser.add_argument('--flag_defaug', type=int, default=1)
     args = parser.parse_args()
 
     if args.flag_wandb == 1:  # Weights and Biases
-        wandb.init(project="LatentDA_003", config=args)
+        wandb.init(project="LatentDA_010", config=args)
         args = wandb.config
 
     main_params = main_nn.MainNN(loop=args.loop,
@@ -70,7 +72,6 @@ def main():
                                  n_model=args.n_model,
                                  opt=args.opt,
                                  save_file=args.save_file,
-                                 show_params=args.show_params,
                                  save_images=args.save_images,
                                  flag_wandb=args.flag_wandb,
                                  n_aug=args.n_aug,
@@ -96,7 +97,10 @@ def main():
                                  iter_interval=args.iter_interval,
                                  flag_adversarial=args.flag_adversarial,
                                  flag_alstest=args.flag_alstest,
-                                 flag_als_acc=args.flag_als_acc
+                                 flag_als_acc=args.flag_als_acc,
+                                 temp=args.temp,
+                                 mean_visual=args.mean_visual,
+                                 flag_defaug=args.flag_defaug
                                  )
     main_params.run_main()
 

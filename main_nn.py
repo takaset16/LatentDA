@@ -10,18 +10,18 @@ import matplotlib.pyplot as plt
 
 class MainNN(object):
     def __init__(self, loop, n_data, gpu_multi, hidden_size, num_samples, num_epochs, batch_size_training, batch_size_test,
-                 n_model, opt, save_file, show_params, save_images, flag_acc5, flag_horovod, cutout, n_aug,
+                 n_model, opt, save_file, save_images, flag_acc5, flag_horovod, cutout, n_aug,
                  flag_dropout, flag_transfer, flag_randaug, rand_n, rand_m,
                  flag_lars, lb_smooth, flag_lr_schedule, flag_warmup, layer_aug, layer_drop, flag_random_layer, flag_wandb,
-                 flag_traintest, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial, flag_alstest, flag_als_acc):
+                 flag_traintest, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial, flag_alstest, flag_als_acc, temp, mean_visual, flag_defaug):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
         self.train_loader = None
         self.test_loader = None
-        self.n_data = n_data  # データセット
+        self.n_data = n_data  # dataset
         self.gpu_multi = gpu_multi  # Multi-GPU
-        self.input_size = 0  # 入力次元
+        self.input_size = 0  # input dimension
         self.hidden_size = hidden_size  # MLP
         self.num_classes = 10  # クラス数
         self.num_channel = 0  # チャネル数
@@ -35,14 +35,12 @@ class MainNN(object):
         self.loss_training_batch = None  # バッチ内誤差
         self.opt = opt  # optimizer
         self.save_file = save_file  # 結果をファイル保存
-        self.show_params = show_params  # パラメータ表示
         self.save_images = save_images  # 画像保存
         self.flag_wandb = flag_wandb  # weights and biases
         self.flag_acc5 = flag_acc5
         self.flag_horovod = flag_horovod
         self.cutout = cutout
         self.flag_traintest = flag_traintest
-        self.aug_layer_count_all = None
 
         """訓練改善手法"""
         self.n_aug = n_aug  # data augmentation
@@ -56,6 +54,7 @@ class MainNN(object):
         self.flag_lr_schedule = flag_lr_schedule  # 学習率スケジュール
         self.flag_warmup = flag_warmup  # Warmup
         self.flag_dropout = flag_dropout  # Dropout
+        self.flag_defaug = flag_defaug  # Default augmentation
 
         """LatentDA関連"""
         self.layer_aug = layer_aug
@@ -72,6 +71,8 @@ class MainNN(object):
         self.flag_adversarial = flag_adversarial
         self.flag_alstest = flag_alstest
         self.flag_als_accuracy = flag_als_acc
+        self.temp = temp
+        self.mean_visual = mean_visual
 
     def run_main(self):
         if self.flag_horovod == 1:
@@ -79,7 +80,7 @@ class MainNN(object):
 
         # print(os.cpu_count())
 
-        """乱数を固定"""
+        """Settings for random number"""
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
         if self.flag_horovod == 1:
@@ -107,13 +108,22 @@ class MainNN(object):
                     self.rand_m = 9
 
         """dataset"""
+        train_dataset = None
+        test_dataset = None
+        als_dataset = None
         traintest_dataset = dataset.MyDataset_training(n_data=self.n_data, num_data=self.num_training_data, seed=self.seed,
-                                                       flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout)
-        als_dataset = dataset.MyDataset_als(n_data=self.n_data, num_data=self.num_training_data, seed=self.seed,
-                                            flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout)
+                                                       flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout, flag_defaug=self.flag_defaug)
+
+        if self.flag_als > 0:
+            als_dataset = dataset.MyDataset_als(n_data=self.n_data, num_data=self.num_training_data, seed=self.seed,
+                                                flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout, flag_defaug=self.flag_defaug)
         self.num_channel, self.num_classes, self.size_after_cnn, self.input_size, hidden_size = traintest_dataset.get_info(n_data=self.n_data)
         if self.hidden_size == 0:
             self.hidden_size = hidden_size
+
+        train_sampler = None
+        test_sampler = None
+        als_sampler = None
 
         if self.flag_traintest == 1:
             n_samples = len(traintest_dataset)
@@ -121,22 +131,13 @@ class MainNN(object):
             train_size = int(n_samples * 0.65)
             test_size = n_samples - train_size
             train_dataset, test_dataset = torch.utils.data.random_split(traintest_dataset, [train_size, test_size])
-
-            train_sampler = None
-            test_sampler = None
-            als_sampler = None
         else:
             train_dataset = traintest_dataset
             test_dataset = dataset.MyDataset_test(n_data=self.n_data)
 
-            train_sampler = train_dataset.sampler
-            test_sampler = test_dataset.sampler
-            als_sampler = test_dataset.sampler
-
-        num_workers = 16
+        num_workers = 8
         train_shuffle = True
         test_shuffle = False
-        als_shuffle = True
 
         if self.flag_horovod == 1:
             num_workers = 4
@@ -144,25 +145,18 @@ class MainNN(object):
 
             train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
             test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank())
-            als_sampler = torch.utils.data.distributed.DistributedSampler(als_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+            if self.flag_als > 0:
+                als_sampler = torch.utils.data.distributed.DistributedSampler(als_dataset, num_replicas=hvd.size(), rank=hvd.rank())
 
-        if train_sampler:
             train_shuffle = False
-        if test_sampler:
-            test_shuffle = False
-        if als_sampler:
-            als_shuffle = False
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size_training, sampler=train_sampler,
                                                         shuffle=train_shuffle, num_workers=num_workers, pin_memory=True)
         self.test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
                                                        shuffle=test_shuffle, num_workers=num_workers, pin_memory=True)
-        if self.flag_alstest == 1:
-            self.als_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
-                                                          shuffle=True, num_workers=num_workers, pin_memory=True)
-        else:
+        if self.flag_als > 0:
             self.als_loader = torch.utils.data.DataLoader(dataset=als_dataset, batch_size=self.batch_size_test, sampler=als_sampler,
-                                                          shuffle=True, num_workers=num_workers, pin_memory=True)
+                                                          shuffle=train_shuffle, num_workers=num_workers, pin_memory=True)
 
         """Transfer learning"""
         if self.flag_transfer == 1:
@@ -210,15 +204,14 @@ class MainNN(object):
             num_features = model.fc.in_features
             model.fc = nn.Linear(num_features, self.num_classes)
 
-        """パラメータ表示"""
-        if self.show_params == 1:
-            params = 0
-            for p in model.parameters():
-                if p.requires_grad:
-                    params += p.numel()
-            print(params)
+        """Show number of paramters"""
+        params = 0
+        for p in model.parameters():
+            if p.requires_grad:
+                params += p.numel()
+        print(params)
 
-        """GPU利用"""
+        """GPU setting"""
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         model = model.to(device)
         if device == 'cuda':
@@ -315,7 +308,7 @@ class MainNN(object):
             from torchlars import LARS
             optimizer = LARS(optimizer)
 
-        """学習率スケジューリング"""
+        """Learning rate schedule"""
         scheduler = None
         if self.flag_lr_schedule == 1:  # CosineAnnealingLR
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.num_epochs, eta_min=0.)
@@ -369,46 +362,53 @@ class MainNN(object):
         elif self.n_model == 'MLP':
             self.num_layer = 3
 
-        """ALS"""
+        """Initialization"""
+        if self.flag_acc5 == 1:
+            results = np.zeros((self.num_epochs, 5))
+        else:
+            results = np.zeros((self.num_epochs, 4))
+        start_time = timeit.default_timer()
+
         layer_rate = np.zeros(self.num_layer)
-        func_sign_random = np.zeros(self.num_layer)
-        func_sign_mean = np.zeros(self.num_layer)
-        loss_naive_mean = np.zeros(self.num_layer)
-        values_greedy_als = np.zeros(self.num_layer)
+        layer_rate_interval = np.zeros(self.num_layer)
+        layer_rate_visual = np.zeros(self.num_layer)
+        func_sign_iter = np.zeros(self.num_layer)
+        loss_aug_iter = np.zeros(self.num_layer)
+        count_interval = 0
+        count_aug_layer = np.zeros(self.num_layer, dtype=int)
+        count_aug_layer_visual = np.zeros(self.num_layer, dtype=int)
+        grad_loss_training = None
+        grad_loss_training_aug = None
+        grad_loss = 0
+        layer_aug = 0
+        images_als_origin = None
+        labels_als_origin = None
+
+        if self.flag_als > 0:
+            if self.flag_als == 3 or self.flag_als == 4:
+                values_als_before = np.zeros(self.num_layer)
+                values_als_before_iter = np.zeros(self.num_layer)
+            else:
+                values_als_before = 0
+                values_als_after = 0
 
         """Decide an initial als_rate"""
-        if self.flag_als >= 1:
+        if self.flag_als > 0:
             sum = 0
 
             for i in range(self.num_layer - 1):
                 layer_rate[i] = 1.0 / self.num_layer
-                sum = sum + layer_rate[i]
+                layer_rate_visual[i] = 1.0 / self.num_layer
+                sum += layer_rate[i]
             layer_rate[self.num_layer - 1] = 1.0 - sum
+            layer_rate_visual[self.num_layer - 1] = 1.0 - sum
 
             """
             layer_rate[0] = 1 - self.als_rate
             for i in range(self.num_layer - 1):
                 layer_rate[i + 1] = self.als_rate / (self.num_layer - 1)
             """
-            self.layer_rate_all = np.zeros((self.num_epochs, self.num_layer))
-
-            self.flag_random_layer = 1
-
-        """Initialization"""
-        if self.flag_acc5 == 1:
-            results = np.zeros((self.num_epochs, 5))  # 結果保存用
-        else:
-            results = np.zeros((self.num_epochs, 4))  # 結果保存用
-        start_time = timeit.default_timer()
-
-        aug_layer_count = np.zeros(self.num_layer, dtype=int)
-        aug_layer_count_interval = np.zeros(self.num_layer, dtype=int)
-        self.aug_layer_count_all = np.zeros((self.num_epochs, self.num_layer), dtype=int)
-
-        images_als_origin = None
-        labels_als_origin = None
-
-        layer_aug = 0
+        self.layer_rate_all = np.zeros((self.num_epochs, self.num_layer))
 
         for epoch in range(self.num_epochs):
             """Training"""
@@ -419,17 +419,15 @@ class MainNN(object):
 
             loss_training_all = 0
             loss_test_all = 0
-            aug_layer_count_epoch = np.zeros(self.num_layer, dtype=int)
 
             total_steps = len(self.train_loader)
-            steps = 0
             num_training_data = 0
 
             if self.flag_als >= 1:
                 for i, (images, labels, _) in enumerate(self.als_loader):
                     if i == 0:
                         if np.array(images.data).ndim == 3:
-                            images_als_origin = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
+                            images_als_origin = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)
                         else:
                             images_als_origin = images.to(device)
                         labels_als_origin = labels.to(device)
@@ -437,213 +435,269 @@ class MainNN(object):
                         break
 
             for i, (images, labels, _) in enumerate(self.train_loader):
-                values_als_before = 0
-                values_als_after = 0
 
-                """ALS process before weight update"""
-                if self.flag_als == 1:
-                    model.eval()
-                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)
-
-                    if self.flag_als_accuracy == 1:  # if accuracy is used instead of loss for ALS
-                        _, predicted = torch.max(outputs_als.data, 1)
-                        correct_als = (predicted == labels_als.long()).sum().item()
-                        total_als = labels_als.size(0)
-                        values_als_before = 100.0 * correct_als / total_als
-                    else:
-                        if labels_als.ndim == 1:
-                            labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # one-hot表現に変換
-
-                        loss_training_before = criterion.forward(outputs_als, labels_als)
-                        values_als_before = loss_training_before.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計
-
-                steps += 1
                 if np.array(images.data).ndim == 3:
-                    images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
+                    images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)
                 else:
                     images = images.to(device)
                 labels = labels.to(device)
 
-                if self.save_images == 1:
-                    util.save_images(images)
+                """Compute losses and decide a layer to apply DA"""
+                if self.n_aug > 0:
+                    if self.flag_als > 0:
+                        model.eval()
+                        if self.flag_als == 1 and epoch >= self.epoch_random:  # ALS
+                            outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
 
-                """Decide a layer to apply DA"""
-                if (self.flag_als == 1 or self.flag_als == 2) and epoch >= self.epoch_random:  # ALS or naive-ALS:
-                    layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
+                            if self.flag_als_accuracy == 1:  # if accuracy is used instead of loss for ALS
+                                _, predicted = torch.max(outputs_als.data, 1)
+                                correct_als = (predicted == labels_als.long()).sum().item()
+                                total_als = labels_als.size(0)
+                                values_als_before = 100.0 * correct_als / total_als
+                            else:
+                                if labels_als.ndim == 1:
+                                    labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
 
-                elif self.flag_als == 3 and epoch >= self.epoch_random:  # greedy-ALS
-                    model.eval()
-                    for j in range(self.num_layer):
-                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=self.n_aug, layer_aug=j, flag_track=0)
+                                values_als_before = criterion.forward(outputs_als, labels_als).item()
 
-                        if self.flag_als_accuracy == 1:
-                            _, predicted = torch.max(outputs_als.data, 1)
-                            correct_als = (predicted == labels_als_origin.long()).sum().item()
-                            total_als = labels_als_origin.size(0)
-                            values_greedy_als[j] = values_greedy_als[j] + 100.0 * correct_als / total_als
-                        else:
+                            layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
+
+                        elif self.flag_als == 2 and epoch >= self.epoch_random:  # naive-ALS
+                            layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
+
+                        elif (self.flag_als == 3 or self.flag_als == 4) and epoch >= self.epoch_random:  # greedy-ALS
+                            for j in range(self.num_layer):
+                                outputs_als, labels_als = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=j)
+
+                                if self.flag_als_accuracy == 1:
+                                    _, predicted = torch.max(outputs_als.data, 1)
+                                    correct_als = (predicted == labels_als_origin.long()).sum().item()
+                                    total_als = labels_als_origin.size(0)
+                                    values_als_before[j] = 100.0 * correct_als / total_als
+                                else:
+                                    if labels_als.ndim == 1:
+                                        labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
+
+                                    values_als_before[j] = criterion.forward(outputs_als, labels_als).item()
+
+                            if self.flag_als == 3:
+                                if (self.iter + 1) % self.iter_interval == 0:
+                                    if self.flag_adversarial == 1:
+                                        layer_aug = np.argmax(values_als_before)
+                                    else:
+                                        layer_aug = np.argmin(values_als_before)
+
+                            elif self.flag_als == 4:
+                                layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
+
+                        elif self.flag_als == 5 and epoch >= self.epoch_random:  # gradient descent
+                            outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
+
                             if labels_als.ndim == 1:
                                 labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
 
-                            values_greedy_als[j] = values_greedy_als[j] + criterion.forward(outputs_als, labels_als).item()
+                            loss_training_before = criterion.forward(outputs_als, labels_als)
 
-                    if (self.iter + 1) % self.iter_interval == 0:
-                        if self.flag_adversarial == 1:
-                            layer_aug = np.argmax(values_greedy_als)
-                        else:
-                            layer_aug = np.argmin(values_greedy_als)
-                        """
-                        if epoch < 50:
-                            layer_aug = np.argmax(values_greedy_als)  # reverse
-                        else:
-                            layer_aug = np.argmin(values_greedy_als)
-                        """
+                            optimizer.zero_grad()
+                            loss_training_before.backward()
 
-                        values_greedy_als = np.zeros(self.num_layer)
-                else:
-                    if self.flag_random_layer == 1:
-                        layer_aug = np.random.randint(self.num_layer)
+                            grad_loss_training_aug = None
+                            jmax = len(optimizer.param_groups[0]['params'])
+                            for j in range(jmax):
+                                if optimizer.param_groups[0]['params'][j].grad != None:
+                                    if grad_loss_training_aug != None:
+                                        grad_loss_layer = torch.flatten(optimizer.param_groups[0]['params'][j].grad)
+                                        grad_loss_training_aug = torch.cat((grad_loss_training_aug, grad_loss_layer), 0)
+                                    else:
+                                        grad_loss_training_aug = torch.flatten(optimizer.param_groups[0]['params'][j].grad)
+                                    # print(torch.numel(grad_loss_training_aug))
+
+                            layer_aug = np.random.choice(a=self.num_layer, p=list(layer_rate))
                     else:
-                        layer_aug = self.layer_aug
-                    """
-                    if self.flag_dropout == 1:
-                        layer_drop = self.layer_drop
-                        # layer_drop = np.random.randint(self.num_layer)
-                    """
+                        if self.flag_random_layer == 1:
+                            layer_aug = np.random.randint(self.num_layer)
+                        else:
+                            layer_aug = self.layer_aug
+                        """
+                        if self.flag_dropout == 1:
+                            layer_drop = self.layer_drop
+                            # layer_drop = np.random.randint(self.num_layer)
+                        """
 
                 """Main training"""
                 model.train()
-                outputs, labels = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=layer_aug, flag_track=1)
+
+                flag_save_images = 0
+                if self.save_images == 1:
+                    if epoch == 0 and i == 0:
+                        flag_save_images = 1
+                        util.save_images(images, 0)  # input images
+
+                outputs, labels = model(x=images, y=labels, n_aug=self.n_aug, layer_aug=layer_aug, flag_save_images=flag_save_images)
 
                 if labels.ndim == 1:
                     labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # To one-hot
 
                 loss_training = criterion.forward(outputs, labels)  # default
 
-                loss_training_all += loss_training.item() * outputs.shape[0]  # ミニバッチ内の誤差の合計を足していく
+                loss_training_all += loss_training.item() * outputs.shape[0]  # Sum of losses within this minibatch
                 num_training_data += images.shape[0]
-                loss_naive_als = loss_training.item()
-
-                aug_layer_count[layer_aug] = aug_layer_count[layer_aug] + 1
-                aug_layer_count_epoch[layer_aug] = aug_layer_count_epoch[layer_aug] + 1
 
                 """Update weights"""
                 optimizer.zero_grad()
                 loss_training.backward()
-
-                """Update learning rate"""
                 optimizer.step()
-                if scheduler is not None:
-                    scheduler.step(epoch - 1 + float(steps) / total_steps)
 
                 if self.flag_horovod == 1:
                     train_loss.update(loss_training.cpu())
 
-                """ALS process after weight update"""
-                if self.flag_als == 1:
-                    model.eval()
+                """Compute layer rate"""
+                if self.flag_als > 0:
+                    count_aug_layer[layer_aug] += 1
+                    count_aug_layer_visual[layer_aug] += 1
 
-                    outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0, flag_track=0)
+                    if epoch < self.num_epochs - 50:
+                        if self.flag_als == 1:
+                            model.eval()
 
-                    if self.flag_als_accuracy == 1:
-                        _, predicted = torch.max(outputs_als.data, 1)
-                        correct_als = (predicted == labels_als_origin.long()).sum().item()
-                        total_als = labels_als_origin.size(0)
-                        values_als_after = 100.0 * correct_als / total_als
-                    else:
-                        if labels_als.ndim == 1:
-                            labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
+                            outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
 
-                        loss_training_after = criterion.forward(outputs_als, labels_als)
-                        values_als_after = loss_training_after.item() * outputs_als.shape[0]  # ミニバッチ内の誤差の合計を足していく
+                            if self.flag_als_accuracy == 1:
+                                _, predicted = torch.max(outputs_als.data, 1)
+                                correct_als = (predicted == labels_als_origin.long()).sum().item()
+                                total_als = labels_als_origin.size(0)
+                                values_als_after = 100.0 * correct_als / total_als
+                            else:
+                                if labels_als.ndim == 1:
+                                    labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
 
-                    """Ver1.0"""
-                    """
-                    if i == 0:
-                        print(loss_training_before_all)
-                        print(loss_training_after_all)
-                    
-                    layer_rate[aug_layer] = layer_rate[aug_layer] + self.als_rate * (loss_training_before_all - loss_training_after_all)
-                    """
+                                values_als_after = criterion.forward(outputs_als, labels_als).item()
 
-                    """Ver1.1"""
-                    delta_loss = values_als_before - values_als_after
-                    if epoch < self.epoch_random:
-                        if delta_loss > 0:
-                            func_sign_random[layer_aug] = func_sign_random[layer_aug] + 1
-                    elif self.epoch_random > 0 and epoch == self.epoch_random and i == 0:
-                        layer_rate = func_sign_random / np.sum(func_sign_random)
+                            """Ver1.0"""
+                            """
+                            layer_rate[aug_layer] = layer_rate[aug_layer] + self.als_rate * (values_als_before - values_als_after)
+                            """
 
-                        for j in range(self.num_layer):
-                            if layer_rate[j] >= 1 - self.als_rate:
-                                layer_rate[j] = 1 - self.als_rate
-                            elif layer_rate[j] <= self.als_rate:
-                                layer_rate[j] = self.als_rate
+                            """Ver1.1"""
+                            delta_loss = values_als_before - values_als_after
+                            if epoch < self.epoch_random:
+                                if delta_loss > 0:
+                                    func_sign_iter[layer_aug] = func_sign_iter[layer_aug] + 1
+                            elif self.epoch_random > 0 and epoch == self.epoch_random and i == 0:
+                                layer_rate = func_sign_iter / np.sum(func_sign_iter)
+                                func_sign_iter = np.zeros(self.num_layer)
 
-                        layer_rate = layer_rate / np.sum(layer_rate)
-                    if epoch >= self.epoch_random:
-                        if delta_loss > 0:
-                            func_sign = 1
-                        elif delta_loss == 0:
-                            func_sign = 0
-                        else:
-                            func_sign = -1
+                            if epoch >= self.epoch_random:
+                                if delta_loss > 0:
+                                    func_sign = 1
+                                elif delta_loss == 0:
+                                    func_sign = 0
+                                else:
+                                    func_sign = -1
 
-                        func_sign_mean[layer_aug] = func_sign_mean[layer_aug] + func_sign
-                        aug_layer_count_interval[layer_aug] = aug_layer_count_interval[layer_aug] + 1
+                                func_sign_iter[layer_aug] += func_sign
+
+                                if (self.iter + 1) % self.iter_interval == 0:
+                                    if self.flag_adversarial == 1:
+                                        for j in range(self.num_layer):
+                                            if count_aug_layer[j] > 0:
+                                                layer_rate[j] -= self.als_rate * func_sign_iter[j] / count_aug_layer[j]
+                                    else:
+                                        for j in range(self.num_layer):
+                                            if count_aug_layer[j] > 0:
+                                                layer_rate[j] += self.als_rate * func_sign_iter[j] / count_aug_layer[j]
+
+                                    func_sign_iter = np.zeros(self.num_layer)
+
+                        elif self.flag_als == 2:  # naive ALS
+                            loss_aug_iter[layer_aug] += loss_training.item()
+
+                            if (self.iter + 1) % self.iter_interval == 0:
+                                if self.flag_adversarial == 1:
+                                    for j in range(self.num_layer):
+                                        if count_aug_layer[j] > 0:
+                                            layer_rate[j] += self.als_rate * loss_aug_iter[j] / count_aug_layer[j]
+                                else:
+                                    for j in range(self.num_layer):
+                                        if count_aug_layer[j] > 0:
+                                            layer_rate[j] -= self.als_rate * loss_aug_iter[j] / count_aug_layer[j]
+
+                                loss_aug_iter = np.zeros(self.num_layer)
+
+                        elif self.flag_als == 3:  # greedy ALS
+                            if (self.iter + 1) % self.iter_interval == 0:
+                                layer_rate_interval += count_aug_layer / np.sum(count_aug_layer)
+                                count_aug_layer = np.zeros(self.num_layer, dtype=int)
+
+                        elif self.flag_als == 4:  # greedy ALS + Temp
+                            values_als_before_iter += values_als_before
+
+                            if (self.iter + 1) % self.iter_interval == 0:
+                                values_als_before_interval = values_als_before_iter / self.iter_interval
+
+                                values_max = np.max(values_als_before_interval)
+                                if self.flag_adversarial == 1:
+                                    layer_rate = np.exp((values_als_before_interval - values_max) / self.temp) / np.sum(np.exp((values_als_before_interval - values_max) / self.temp))
+                                else:
+                                    layer_rate = np.exp(-1.0 * (values_als_before_interval - values_max) / self.temp) / np.sum(np.exp(-1.0 * (values_als_before_interval - values_max) / self.temp))
+
+                                values_als_before_iter = np.zeros(self.num_layer)
+
+                        elif self.flag_als == 5:  # gradient descent
+                            grad_loss_training = None
+                            jmax = len(optimizer.param_groups[0]['params'])
+                            for j in range(jmax):
+                                if optimizer.param_groups[0]['params'][j].grad != None:
+                                    if grad_loss_training != None:
+                                        grad_loss_layer = torch.flatten(optimizer.param_groups[0]['params'][j].grad)
+                                        grad_loss_training = torch.cat((grad_loss_training, grad_loss_layer), 0)
+                                    else:
+                                        grad_loss_training = torch.flatten(optimizer.param_groups[0]['params'][j].grad)
+
+                            grad_loss += torch.dot(torch.t(grad_loss_training_aug), grad_loss_training)
+
+                            if (self.iter + 1) % self.iter_interval == 0:
+                                if self.flag_adversarial == 1:
+                                    layer_rate[layer_aug] += self.als_rate * grad_loss.item() / self.iter_interval
+                                else:
+                                    layer_rate[layer_aug] -= self.als_rate * grad_loss.item() / self.iter_interval
+
+                                grad_loss = 0
 
                         if (self.iter + 1) % self.iter_interval == 0:
-                            if self.flag_adversarial == 1:
-                                # layer_rate = layer_rate - self.als_rate * func_sign_mean / self.iter_interval
-                                for j in range(self.num_layer):
-                                    if aug_layer_count_interval[j] > 0:
-                                        layer_rate[j] = layer_rate[j] - self.als_rate * func_sign_mean[j] / aug_layer_count_interval[j]
-                            else:
-                                # layer_rate = layer_rate + self.als_rate * func_sign_mean / self.iter_interval
-                                for j in range(self.num_layer):
-                                    if aug_layer_count_interval[j] > 0:
-                                        layer_rate[j] = layer_rate[j] + self.als_rate * func_sign_mean[j] / aug_layer_count_interval[j]
-
-                elif self.flag_als == 2:  # naive ALS
-                    loss_naive_mean[layer_aug] = loss_naive_mean[layer_aug] - self.als_rate * loss_naive_als
-                    aug_layer_count_interval[layer_aug] = aug_layer_count_interval[layer_aug] + 1
-
-                    if (self.iter + 1) % self.iter_interval == 0:
-                        if self.flag_adversarial == 1:
-                            # layer_rate = layer_rate - self.als_rate * loss_naive_mean / self.iter_interval
                             for j in range(self.num_layer):
-                                if aug_layer_count_interval[j] > 0:
-                                    layer_rate[j] = layer_rate[j] - self.als_rate * loss_naive_mean[j] / aug_layer_count_interval[j]
-                        else:
-                            # layer_rate = layer_rate + self.als_rate * loss_naive_mean / self.iter_interval
-                            for j in range(self.num_layer):
-                                if aug_layer_count_interval[j] > 0:
-                                    layer_rate[j] = layer_rate[j] + self.als_rate * loss_naive_mean[j] / aug_layer_count_interval[j]
+                                if layer_rate[j] >= 1 - 0.01:
+                                    layer_rate[j] = 1 - 0.01
+                                elif layer_rate[j] <= 0.01:
+                                    layer_rate[j] = 0.01
 
-                elif self.flag_als == 3:  # greedy ALS
-                    layer_rate = aug_layer_count_epoch / np.sum(aug_layer_count_epoch)
+                            layer_rate = layer_rate / np.sum(layer_rate)
+                            layer_rate_interval += layer_rate
+                            count_aug_layer = np.zeros(self.num_layer, dtype=int)
+                            count_interval += 1
 
-                if self.flag_als == 1 or self.flag_als == 2:
-                    if (self.iter + 1) % self.iter_interval == 0:
+                            if count_interval % self.mean_visual == 0:
+                                layer_rate_visual = layer_rate_interval / self.mean_visual
+                                layer_rate_interval = np.zeros(self.num_layer)
+
+                    if self.flag_wandb == 1:
                         for j in range(self.num_layer):
-                            if layer_rate[j] >= 1 - self.als_rate:
-                                layer_rate[j] = 1 - self.als_rate
-                            elif layer_rate[j] <= self.als_rate / self.num_layer:
-                                layer_rate[j] = self.als_rate / self.num_layer
-                        layer_rate = layer_rate / np.sum(layer_rate)
+                            wandb.log({"iteration": self.iter,
+                                       "epoch": epoch,
+                                       "rate_p%s" % j: layer_rate_visual[j],
+                                       "count_p%s" % j: count_aug_layer_visual[j]})
 
-                        func_sign_mean = np.zeros(self.num_layer)
-                        loss_naive_mean = np.zeros(self.num_layer)
-                        aug_layer_count_interval = np.zeros(self.num_layer, dtype=int)
-
+                """Update learning rate"""
                 self.iter += 1
 
-            loss_training_each = loss_training_all / num_training_data  # サンプル1つあたりの誤差
+                if scheduler is not None:
+                    scheduler.step(epoch + float(self.iter) / total_steps)
+
+            loss_training_each = loss_training_all / num_training_data  # Loss for each sample
             learning_rate = optimizer.param_groups[0]['lr']
 
             if self.flag_als >= 1:
                 self.layer_rate_all[epoch] = layer_rate
-            self.aug_layer_count_all[epoch] = aug_layer_count
 
             """Test"""
             model.eval()
@@ -666,7 +720,7 @@ class MainNN(object):
                 num_test_data = 0
                 for i, (images, labels, _) in enumerate(self.test_loader):
                     if np.array(images.data).ndim == 3:
-                        images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)  # チャネルの次元を加えて4次元にする
+                        images = images.reshape(images.shape[0], 1, images.shape[1], images.shape[2]).to(device)
                     else:
                         images = images.to(device)
                     labels = labels.to(device)
@@ -674,7 +728,7 @@ class MainNN(object):
                     if self.save_images == 1 and epoch == self.num_epochs - 1:
                         util.save_images(images)
 
-                    outputs, _ = model.forward(x=images, y=labels, n_aug=0, flag_track=1)
+                    outputs, _ = model.forward(x=images, y=labels, n_aug=0)
 
                     if self.flag_acc5 == 1:
                         acc1, acc5 = util.accuracy(outputs.data, labels.long(), topk=(1, 5))
@@ -689,13 +743,13 @@ class MainNN(object):
                         labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # To one-hot
 
                     loss_test = criterion.forward(outputs, labels)
-                    loss_test_all += loss_test.item() * outputs.shape[0]  # ミニバッチ内の誤差の合計を足していく
+                    loss_test_all += loss_test.item() * outputs.shape[0]
                     num_test_data += images.shape[0]
 
                     if self.flag_horovod == 1:
                         test_loss.update(loss_test.cpu())
 
-            """テスト結果算出"""
+            """Compute test results"""
             top5_avg = 0
 
             if self.flag_acc5 == 1:
@@ -711,15 +765,23 @@ class MainNN(object):
                     top5_avg = test_accuracy_top5.avg.item()
                     # print(top1_avg)  # after allreduce
             else:
-                top1_avg = 100.0 * correct / total  # 正解率を計算
+                top1_avg = 100.0 * correct / total
 
-            loss_test_each = loss_test_all / num_test_data  # サンプル1つあたりの誤差
+            loss_test_each = loss_test_all / num_test_data  # Loss for each sample
 
             """Run time"""
             end_epoch_time = timeit.default_timer()
             epoch_time = end_epoch_time - start_epoch_time
 
             """Show results for each epoch"""
+            if self.flag_wandb == 1:
+                wandb.log({"iteration": self.iter,
+                           "epoch": epoch,
+                           "loss_training": loss_training_each,
+                           "learning_rate": learning_rate,
+                           "test_acc": top1_avg,
+                           "loss_test": loss_test_each})
+
             flag_log = 1
             if self.flag_horovod == 1:
                 if hvd.rank() != 0:
@@ -732,18 +794,6 @@ class MainNN(object):
                 else:
                     print('Epoch [{}/{}], Training Loss: {:.4f}, Test Acc: {:.3f} %, Test Loss: {:.4f}, Epoch Time: {:.2f}s'.
                           format(epoch + 1, self.num_epochs, loss_training_each, top1_avg, loss_test_each, epoch_time))
-
-            if self.flag_wandb == 1:
-                wandb.log({"loss_training": loss_training_each}, step=epoch)
-                wandb.log({"test_acc": top1_avg}, step=epoch)
-                wandb.log({"loss_test": loss_test_each}, step=epoch)
-                wandb.log({"epoch_time": epoch_time}, step=epoch)
-                wandb.log({"lr": learning_rate}, step=epoch)
-
-                if self.flag_als >= 1:
-                    for i in range(self.num_layer):
-                        wandb.log({'rate_p%s' % i: layer_rate[i]}, step=epoch)
-                        wandb.log({'count_p%s' % i: aug_layer_count[i]}, step=epoch)
 
             if self.save_file == 1:
                 if self.flag_acc5 == 1:
@@ -799,6 +849,3 @@ class MainNN(object):
                         np.savetxt('results/random/layer_rate_data_%s_model_%s_num_%s_batch_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s.csv'
                                    % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial, self.seed),
                                    self.layer_rate_all, delimiter=',')
-                    np.savetxt('results/random/layer_count_data_%s_model_%s_num_%s_batch_%s_aug_%s_als_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.n_aug, self.flag_als, self.als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial, self.seed),
-                               self.aug_layer_count_all, delimiter=',')

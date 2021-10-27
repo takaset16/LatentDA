@@ -5,6 +5,9 @@ from scipy.misc import imresize
 from scipy.ndimage.interpolation import rotate
 import torch
 import util
+import skimage
+from skimage import data
+import skimage.transform
 
 
 def random_noise(image):
@@ -18,10 +21,8 @@ def random_noise(image):
         # noise = np.random.randn(n, w)
         noise = torch.normal(mean=0, std=1, size=(n, w))
 
-    # image = image + util.to_var(torch.from_numpy(noise_scale * noise).float())
-    image = image + util.to_var((noise_scale * noise).float())
-
-    # util.save_images(image)  # 画像保存
+    # image = image + util.to_device(torch.from_numpy(noise_scale * noise).float())
+    image = image + util.to_device((noise_scale * noise).float())
 
     return image
 
@@ -37,8 +38,6 @@ def horizontal_flip(image):
         if rand[i] < 0.5:
             image2[i] = image[i, :, :, reverse]  # 初項image.shape[3] - 1, 末項0, 公差-1の数列を生成
 
-    # util.save_images(image2)  # 画像保存
-
     return image2
 
 
@@ -52,8 +51,6 @@ def vertical_flip(image):
     for i in range(n):
         if rand[i] < 0.5:
             image2[i] = image[i, :, reverse, :]  # 初項image.shape[3] - 1, 末項0, 公差-1の数列を生成
-
-    # util.save_images(image2)  # 画像保存
 
     return image2
 
@@ -81,8 +78,6 @@ def random_crop(image):
         # もとの画像サイズに拡大
         image2[i] = torch.nn.functional.upsample(x, size=(h, w), mode="bilinear", align_corners=True)
 
-    # util.save_images(image)  # 画像保存
-
     return image2
 
 
@@ -104,36 +99,36 @@ def random_transfer(image):
 
         image2[i, :, top - offset2:bottom - offset2, left - offset1:right - offset1] = image[i, :, top:bottom, left:right]
 
-    # util.save_images(image2)  # 画像保存
-
     return image2
 
 
 def random_rotation(image):
-    size, c, h, w = image.shape
+    n, c, h, w = image.shape
     image2 = image.clone()
-    image2 = np.array(image2.data.cpu())  # numpy
+    image2 = np.array(image2.data.cpu())
 
     if c == 1:
         image2 = np.squeeze(image2)
     else:
         image2 = image2.transpose((0, 2, 3, 1))
 
-    for i in range(size):
-        angle = np.random.randint(180)
-        image_rotate = rotate(image2[i], angle)
+    rand = np.random.rand(n)
+    for i in range(n):
+        angle = np.random.randint(30)
+        if rand[i] > 0.5:
+            angle = -angle
 
         if c == 1:
-            image2[i] = imresize(image_rotate, (h, w))
+            image2[i] = skimage.transform.resize(skimage.transform.rotate(image2[i], angle, resize=True), (h, w), order=3)
         else:
-            image2[i] = imresize(image_rotate, (h, w, c))  # 自動的に255倍される
-    if c == 1:
-        image2 = image2[:, np.newaxis, :, :] / 255.0
-    else:
-        image2 = image2.transpose((0, 3, 1, 2)) / 255.0
+            image2[i] = skimage.transform.resize(skimage.transform.rotate(image2[i], angle, resize=True), (h, w, c), order=3)
 
-    image2 = torch.from_numpy(image2).float()  # Tensor
-    # util.save_images(image2)  # 画像保存
+    if c == 1:
+        image2 = image2[:, np.newaxis, :, :]
+    else:
+        image2 = image2.transpose((0, 3, 1, 2))
+
+    image2 = util.to_device(torch.from_numpy(image2).float())  # Tensor
 
     return image2
 
@@ -152,16 +147,14 @@ def mixup(image, label, num_classes):
     """入力、ラベルを混ぜ合わせる"""
     mix_rate2 = None
     if image.ndim == 2:
-        mix_rate2 = util.to_var(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
+        mix_rate2 = util.to_device(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
     elif image.ndim == 4:
-        mix_rate2 = util.to_var(torch.from_numpy(mix_rate.reshape((image.shape[0], 1, 1, 1))).float())
+        mix_rate2 = util.to_device(torch.from_numpy(mix_rate.reshape((image.shape[0], 1, 1, 1))).float())
 
-    mix_rate = util.to_var(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
+    mix_rate = util.to_device(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
 
     x_mixed = image.clone() * mix_rate2 + image2.clone() * (1 - mix_rate2)  # サンプルx1のために選ばれたユニットの出力とサンプルx2のために選ばれたユニットの出力の線形補間
     y_soft = y_one_hot * mix_rate + y2_one_hot * (1 - mix_rate)
-
-    # util.save_images(x_mixed)  # 画像保存
 
     return x_mixed, y_soft
 
@@ -211,8 +204,6 @@ def cutout(image):
 
             image2[i][left:right] = mask_value  # マスク部分の画素値を平均値で埋める
 
-    # util.save_images(image2)  # 画像保存
-
     return image2
 
 
@@ -250,8 +241,6 @@ def random_erasing(image, p=0.5, s=(0.02, 0.4), r=(0.3, 3)):
         right = left + mask_width
 
         image2[i][:, top:bottom, left:right] = mask_value  # マスク部分の画素値を平均値で埋める
-
-    # util.save_images(image2)  # 画像保存
 
     return image
 
@@ -325,10 +314,8 @@ def ricap(image_batch, label_batch, num_classes):
                      w, h, np.repeat(image_x, batch_size),
                      np.repeat(image_y, batch_size))
 
-    output_images = torch.from_numpy(output_images).float()  # Tensor
-    output_labels = torch.from_numpy(output_labels).float()  # Tensor
-    label_batch = torch.from_numpy(label_batch).float()  # Tensor
-
-    # util.save_images(output_images)  # 画像保存
+    output_images = util.to_device(torch.from_numpy(output_images).float())  # Tensor
+    output_labels = util.to_device(torch.from_numpy(output_labels).float())  # Tensor
+    label_batch = util.to_device(torch.from_numpy(label_batch).float())  # Tensor
 
     return output_images, output_labels

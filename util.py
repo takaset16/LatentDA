@@ -16,18 +16,11 @@ from matplotlib import pylab as plt
 from RandAugment import RandAugment
 
 
-def to_var(x):
-    if torch.cuda.is_available():
-        x = x.cuda()
+def to_device(x):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    x = x.to(device)
 
-    return Variable(x)
-
-
-def to_var_grad(x):
-    if torch.cuda.is_available():
-        x = x.cuda()
-
-    return Variable(x, requires_grad=True)
+    return x
 
 
 def init_params(net):
@@ -66,7 +59,7 @@ def make_training_test_data(x, num, seed):  # 訓練データとテストデー�
     return x_training, x_test
 
 
-def run_n_aug(x, y, n_aug, num_classes):
+def run_n_aug(x, y, n_aug, num_classes, flag_save_images):
     """
     # x = augmentation.random_noise(x)
     x = augmentation.horizontal_flip(x)
@@ -99,15 +92,16 @@ def run_n_aug(x, y, n_aug, num_classes):
         x = augmentation.random_erasing(x)
     elif n_aug == 8:  # one-hotなラベルが返される
         x, y = augmentation.ricap(image_batch=x, label_batch=y, num_classes=num_classes)
-        x = to_var(x)
-        y = to_var(y)
     elif n_aug == 9:
         x = augmentation.random_noise(x)
+
+    if flag_save_images == 1:
+        save_images(x, 1)
 
     return x, y
 
 
-def save_images(images):
+def save_images(images, flag_aug):
     resize = 128
     n, c, h, w = images.shape
 
@@ -124,7 +118,7 @@ def save_images(images):
         else:
             img_bgr = random_images_reshape[:, :, [2, 1, 0]]  # 色の順番をRGBからBGRに変更
 
-        cv2.imwrite('images/image_%d.png' % i, img_bgr)  # 画像を出力
+        cv2.imwrite('images/input/image_%d_aug_%d.png' % (i, flag_aug), img_bgr)  # 画像を出力
 
 
 def save_images_ch(images, n_layer):  # チャンネルごとに画像保存

@@ -86,11 +86,10 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, depth, num_classes, num_channel, n_data, n_aug, bottleneck=False):
+    def __init__(self, depth, num_classes, num_channel, n_data, bottleneck=False):
         super(ResNet, self).__init__()
         self.num_classes = num_classes
         self.n_data = n_data
-        self.n_aug = n_aug
 
         if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
             self.inplanes = 16
@@ -104,6 +103,7 @@ class ResNet(nn.Module):
 
             self.conv1 = nn.Conv2d(num_channel, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
             self.bn1 = nn.BatchNorm2d(self.inplanes)
+            self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
             self.relu = nn.ReLU(inplace=True)
             self.layer1 = self._make_layer(block, 16, n)
             self.layer2 = self._make_layer(block, 32, n, stride=2)
@@ -121,6 +121,7 @@ class ResNet(nn.Module):
             self.inplanes = 64
             self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
             self.bn1 = nn.BatchNorm2d(64)
+            self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
             self.relu = nn.ReLU(inplace=True)
             self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
             self.layer1 = self._make_layer(blocks[depth], 64, layers[depth][0])
@@ -157,110 +158,66 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
+    def forward(self, x, y, n_aug=0, layer_aug=0, flag_dropout=0, layer_drop=0, flag_track=1, flag_save_images=0):
         if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-            if flag_aug == 1 and layer_aug == 0:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
+            if n_aug >= 1 and layer_aug == 0:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.conv1(x)
             x = self.bn1(x)
             x = self.relu(x)
 
-            if flag_var == 1 and layer_var == 1:
-                return x, y
-            if flag_aug == 1 and layer_aug == 1:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 1:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 1:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer1(x)
 
-            if flag_var == 1 and layer_var == 2:
-                return x, y
-            if flag_aug == 1 and layer_aug == 2:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 2:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 2:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer2(x)
 
-            if flag_var == 1 and layer_var == 3:
-                return x, y
-            if flag_aug == 1 and layer_aug == 3:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 3:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 3:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer3(x)
 
-            if flag_var == 1 and layer_var == 4:
-                return x, y
-            if flag_aug == 1 and layer_aug == 4:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 4:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 4:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.avgpool(x)
             x = x.view(x.size(0), -1)
             x = self.fc(x)
 
-            if flag_var == 1 and layer_var == 5:
-                return x, y
-            if flag_aug == 1 and layer_aug == 5:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 5:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 5:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
 
         elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-            if flag_aug == 1 and layer_aug == 0:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
+            if n_aug >= 1 and layer_aug == 0:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.conv1(x)
             x = self.bn1(x)
             x = self.relu(x)
             x = self.maxpool(x)
 
-            if flag_var == 1 and layer_var == 1:
-                return x, y
-            if flag_aug == 1 and layer_aug == 1:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 1:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 1:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer1(x)
 
-            if flag_var == 1 and layer_var == 2:
-                return x, y
-            if flag_aug == 1 and layer_aug == 2:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 2:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 2:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer2(x)
 
-            if flag_var == 1 and layer_var == 3:
-                return x, y
-            if flag_aug == 1 and layer_aug == 3:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 3:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 3:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer3(x)
 
-            if flag_var == 1 and layer_var == 4:
-                return x, y
-            if flag_aug == 1 and layer_aug == 4:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 4:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 4:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.layer4(x)
 
-            if flag_var == 1 and layer_var == 5:
-                return x, y
-            if flag_aug == 1 and layer_aug == 5:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 5:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 5:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
             x = self.avgpool(x)
             x = x.view(x.size(0), -1)
             x = self.fc(x)
 
-            if flag_var == 1 and layer_var == 6:
-                return x, y
-            if flag_aug == 1 and layer_aug == 6:
-                x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-            if flag_dropout == 1 and layer_drop == 6:
-                x = self.dropout(x)
+            if n_aug >= 1 and layer_aug == 6:
+                x, y = util.run_n_aug(x, y, n_aug, self.num_classes)
 
-        return x, y, layer_aug
+        return x, y
