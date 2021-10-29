@@ -108,8 +108,6 @@ class MainNN(object):
                     self.rand_m = 9
 
         """dataset"""
-        train_dataset = None
-        test_dataset = None
         als_dataset = None
         traintest_dataset = dataset.MyDataset_training(n_data=self.n_data, num_data=self.num_training_data, seed=self.seed,
                                                        flag_randaug=self.flag_randaug, rand_n=self.rand_n, rand_m=self.rand_m, cutout=self.cutout, flag_defaug=self.flag_defaug)
@@ -377,12 +375,14 @@ class MainNN(object):
         count_interval = 0
         count_aug_layer = np.zeros(self.num_layer, dtype=int)
         count_aug_layer_visual = np.zeros(self.num_layer, dtype=int)
-        grad_loss_training = None
         grad_loss_training_aug = None
         grad_loss = 0
+        values_als_before = None
+        values_als_before_iter = None
         layer_aug = 0
         images_als_origin = None
         labels_als_origin = None
+        step = 0
 
         if self.flag_als > 0:
             if self.flag_als == 3 or self.flag_als == 4:
@@ -390,7 +390,6 @@ class MainNN(object):
                 values_als_before_iter = np.zeros(self.num_layer)
             else:
                 values_als_before = 0
-                values_als_after = 0
 
         """Decide an initial als_rate"""
         if self.flag_als > 0:
@@ -689,12 +688,14 @@ class MainNN(object):
 
                 """Update learning rate"""
                 self.iter += 1
+                step += 1
 
                 if scheduler is not None:
-                    scheduler.step(epoch + float(self.iter) / total_steps)
+                    scheduler.step(epoch + float(step) / total_steps)
 
             loss_training_each = loss_training_all / num_training_data  # Loss for each sample
             learning_rate = optimizer.param_groups[0]['lr']
+            step = 0
 
             if self.flag_als >= 1:
                 self.layer_rate_all[epoch] = layer_rate
@@ -826,7 +827,7 @@ class MainNN(object):
                 top5_avg_max = np.max(results[:, 2])
                 print(top5_avg_max)
 
-        """ファイル保存"""
+        """Save results"""
         if self.save_file == 1:
             if flag_log == 1:
                 if self.flag_randaug == 1:  # RandAugment

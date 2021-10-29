@@ -78,59 +78,35 @@ class WideResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, flag_aug=0, flag_dropout=0, flag_var=0, layer_aug=0, layer_drop=0, layer_var=1):
-        if flag_aug == 1 and layer_aug == 0:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
+    def forward(self, x, y, n_aug=0, layer_aug=0, flag_dropout=0, layer_drop=0, flag_track=1, flag_save_images=0):
+        if n_aug >= 1 and layer_aug == 0:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
         x = self.conv1(x)
 
-        if flag_var == 1 and layer_var == 1:
-            return x, y
-        if flag_aug == 1 and layer_aug == 1:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        if flag_dropout == 1 and layer_drop == 1:
-            x = self.dropout(x)
+        if n_aug >= 1 and layer_aug == 1:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
         x = self.layer1(x)
 
-        if flag_var == 1 and layer_var == 2:
-            return x, y
-        if flag_aug == 1 and layer_aug == 2:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        if flag_dropout == 1 and layer_drop == 2:
-            x = self.dropout(x)
+        if n_aug >= 1 and layer_aug == 2:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
         x = self.layer2(x)
 
-        if flag_var == 1 and layer_var == 3:
-            return x, y
-        if flag_aug == 1 and layer_aug == 3:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        if flag_dropout == 1 and layer_drop == 3:
-            x = self.dropout(x)
+        if n_aug >= 1 and layer_aug == 3:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
         x = self.layer3(x)
 
-        if flag_var == 1 and layer_var == 4:
-            return x, y
-        if flag_aug == 1 and layer_aug == 4:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        if flag_dropout == 1 and layer_drop == 4:
-            x = self.dropout(x)
+        if n_aug >= 1 and layer_aug == 4:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
         x = F.relu(self.bn1(x))
 
-        if flag_var == 1 and layer_var == 5:
-            return x, y
-        if flag_aug == 1 and layer_aug == 5:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        if flag_dropout == 1 and layer_drop == 5:
-            x = self.dropout(x)
+        if n_aug >= 1 and layer_aug == 5:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
         # x = F.avg_pool2d(x, 8)
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = x.view(x.size(0), -1)
         x = self.linear(x)
 
-        if flag_var == 1 and layer_var == 6:
-            return x, y
-        if flag_aug == 1 and layer_aug == 6:
-            x, y = util.run_n_aug(x, y, self.n_aug, self.num_classes)
-        if flag_dropout == 1 and layer_drop == 6:
-            x = self.dropout(x)
+        if n_aug >= 1 and layer_aug == 6:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
 
         return x, y, layer_aug

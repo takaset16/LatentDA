@@ -58,7 +58,7 @@ def main():
     args = parser.parse_args()
 
     if args.flag_wandb == 1:  # Weights and Biases
-        wandb.init(project="LatentDA_010", config=args)
+        wandb.init(project="LatentDA_010", config=args, dir="../../../../../groups/gac50437/wandb/LatentDA")
         args = wandb.config
 
     main_params = main_nn.MainNN(loop=args.loop,

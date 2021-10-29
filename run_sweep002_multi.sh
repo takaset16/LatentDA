@@ -1,6 +1,6 @@
 #!/bin/sh -x
 
-#$ -l rt_G.small=1
+#$ -l rt_F=1
 #$ -l h_rt=48:00:00
 #$ -N anaconda
 #$ -cwd
