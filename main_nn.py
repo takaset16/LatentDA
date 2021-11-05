@@ -13,7 +13,8 @@ class MainNN(object):
                  n_model, opt, save_file, save_images, flag_acc5, flag_horovod, cutout, n_aug,
                  flag_dropout, flag_transfer, flag_randaug, rand_n, rand_m,
                  flag_lars, lb_smooth, flag_lr_schedule, flag_warmup, layer_aug, layer_drop, flag_random_layer, flag_wandb,
-                 flag_traintest, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial, flag_alstest, flag_als_acc, temp, mean_visual, flag_defaug):
+                 flag_traintest, flag_als, als_rate, epoch_random, iter_interval, flag_adversarial, flag_alstest, flag_als_acc,
+                 temp, mean_visual, flag_defaug, flag_sign):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
@@ -73,6 +74,7 @@ class MainNN(object):
         self.flag_als_accuracy = flag_als_acc
         self.temp = temp
         self.mean_visual = mean_visual
+        self.flag_sign = flag_sign
 
     def run_main(self):
         if self.flag_horovod == 1:
@@ -587,14 +589,17 @@ class MainNN(object):
                                 func_sign_iter = np.zeros(self.num_layer)
 
                             if epoch >= self.epoch_random:
-                                if delta_loss > 0:
-                                    func_sign = 1
-                                elif delta_loss == 0:
-                                    func_sign = 0
-                                else:
-                                    func_sign = -1
+                                if self.flag_sign == 1:
+                                    if delta_loss > 0:
+                                        func_sign = 1
+                                    elif delta_loss == 0:
+                                        func_sign = 0
+                                    else:
+                                        func_sign = -1
 
-                                func_sign_iter[layer_aug] += func_sign
+                                    func_sign_iter[layer_aug] += func_sign
+                                else:
+                                    func_sign_iter[layer_aug] += delta_loss
 
                                 if (self.iter + 1) % self.iter_interval == 0:
                                     if self.flag_adversarial == 1:
@@ -653,13 +658,27 @@ class MainNN(object):
                                     else:
                                         grad_loss_training = torch.flatten(optimizer.param_groups[0]['params'][j].grad)
 
-                            grad_loss += torch.dot(torch.t(grad_loss_training_aug), grad_loss_training)
+                            if self.flag_sign == 1:
+                                sign_loss = torch.dot(torch.t(grad_loss_training_aug), grad_loss_training)
+                                func_sign = 0
+
+                                if self.flag_sign == 1:
+                                    if sign_loss > 0:
+                                        func_sign = 1
+                                    elif sign_loss == 0:
+                                        func_sign = 0
+                                    else:
+                                        func_sign = -1
+
+                                grad_loss += func_sign
+                            else:
+                                grad_loss += torch.dot(torch.t(grad_loss_training_aug), grad_loss_training)
 
                             if (self.iter + 1) % self.iter_interval == 0:
                                 if self.flag_adversarial == 1:
-                                    layer_rate[layer_aug] += self.als_rate * grad_loss.item() / self.iter_interval
+                                    layer_rate[layer_aug] -= self.als_rate * grad_loss / self.iter_interval
                                 else:
-                                    layer_rate[layer_aug] -= self.als_rate * grad_loss.item() / self.iter_interval
+                                    layer_rate[layer_aug] += self.als_rate * grad_loss / self.iter_interval
 
                                 grad_loss = 0
 
