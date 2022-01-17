@@ -1,10 +1,12 @@
 # coding: utf-8
 import numpy as np
+import torch
 import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import ConcatDataset
 from RandAugment import RandAugment
+from PIL import Image
 import util
 
 _IMAGENET_PCA = {
@@ -79,7 +81,7 @@ class MyDataset_training(Dataset):
         elif n_data == 'STL-10':
             transform_train = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+                # transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
             ])
         elif n_data == 'ImageNet':
             transform_train = transforms.Compose([
@@ -137,9 +139,10 @@ class MyDataset_training(Dataset):
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
             self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=True, transform=transform_train, download=True)
         elif n_data == 'ImageNet':  # ImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups1/gac50437/aab11017df/Imagenet/train', transform=transform_train)
+            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/train', transform=transform_train)
         elif n_data == 'TinyImageNet':  # TinyImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/train', transform=transform_train)
+            # self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/train', transform=transform_train)
+            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/tiny-imagenet-200/train', transform=transform_train)
         elif n_data == 'Letter':  # Letter Recognition
             train_x = np.loadtxt("../../datasets/uci/letter/input_data.csv", delimiter=',', dtype=np.float32)
             train_y = np.loadtxt("../../datasets/uci/letter/output_data.csv", delimiter=',', dtype=np.int64)
@@ -338,7 +341,7 @@ class MyDataset_test(Dataset):
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
             self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=False, transform=transform_test, download=True)
         elif n_data == 'ImageNet':  # ImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups1/gac50437/aab11017df/Imagenet/val', transform=transform_test)
+            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/val', transform=transform_test)
         elif n_data == 'TinyImageNet':  # TinyImageNet
             self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/val', transform=transform_test)
 
@@ -359,6 +362,7 @@ class MyDataset_als(Dataset):
         transform_train = None
         if n_data == 'MNIST':
             transform_train = transforms.Compose([
+                transforms.RandomRotation(degrees=10),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.1307, ), std=(0.3081, ))
             ])
@@ -468,9 +472,10 @@ class MyDataset_als(Dataset):
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
             self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=True, transform=transform_train, download=True)
         elif n_data == 'ImageNet':  # ImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups1/gac50437/aab11017df/Imagenet/train', transform=transform_train)
+            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/val', transform=transform_train)
         elif n_data == 'TinyImageNet':  # TinyImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/train', transform=transform_train)
+            # self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/val', transform=transform_test)
+            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/tiny-imagenet-200/val', transform=transform_train)
         elif n_data == 'Letter':  # Letter Recognition
             train_x = np.loadtxt("../../datasets/uci/letter/input_data.csv", delimiter=',', dtype=np.float32)
             train_y = np.loadtxt("../../datasets/uci/letter/output_data.csv", delimiter=',', dtype=np.int64)
@@ -501,4 +506,51 @@ class MyDataset_als(Dataset):
 
     def __len__(self):
         return len(self.mydata)
+
+
+class Lighting(object):
+    """Lighting noise(AlexNet - style PCA - based noise)"""
+
+    def __init__(self, alphastd, eigval, eigvec):
+        self.alphastd = alphastd
+        self.eigval = torch.Tensor(eigval)
+        self.eigvec = torch.Tensor(eigvec)
+
+    def __call__(self, img):
+        if self.alphastd == 0:
+            return img
+
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = self.eigvec.type_as(img).clone() \
+            .mul(alpha.view(1, 3).expand(3, 3)) \
+            .mul(self.eigval.view(1, 3).expand(3, 3)) \
+            .sum(1).squeeze()
+
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
+
+
+class CutoutDefault(object):
+    """
+    Reference : https://github.com/quark0/darts/blob/master/cnn/utils.py
+    """
+    def __init__(self, length):
+        self.length = length
+
+    def __call__(self, img):
+        h, w = img.size(1), img.size(2)
+        mask = np.ones((h, w), np.float32)
+        y = np.random.randint(h)
+        x = np.random.randint(w)
+
+        y1 = np.clip(y - self.length // 2, 0, h)
+        y2 = np.clip(y + self.length // 2, 0, h)
+        x1 = np.clip(x - self.length // 2, 0, w)
+        x2 = np.clip(x + self.length // 2, 0, w)
+
+        mask[y1: y2, x1: x2] = 0.
+        mask = torch.from_numpy(mask)
+        mask = mask.expand_as(img)
+        img *= mask
+        return img
+
 

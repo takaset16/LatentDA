@@ -1,14 +1,15 @@
-#!/bin/sh -x
+#!/bin/sh
 
 #$ -l rt_G.small=1
-#$ -l h_rt=48:00:00
-#$ -N anaconda
+#$ -l h_rt=36:00:00
+#$ -j y
 #$ -cwd
 
 source /etc/profile.d/modules.sh
-module load python/3.6/3.6.5 cuda/10.1/10.1.243 cudnn/7.6/7.6.5 nccl/2.5/2.5.6-1 openmpi/2.1.6 gcc/7.4.0
-source ~/venv/pytorch/bin/activate
+module load gcc/9.3.0 python/3.8/3.8.7 cuda/11.1/11.1.1 cudnn/8.0/8.0.5
+source ~/venv/pytorch_cuda11/bin/activate
+git clone https://github.com/pytorch/examples.git
 
-wandb agent takase16/LatentDA_011/16c7t1uj
+wandb agent takase16/Latent_017/zx051erq
 
 deactivate

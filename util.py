@@ -59,41 +59,55 @@ def make_training_test_data(x, num, seed):  # 訓練データとテストデー�
     return x_training, x_test
 
 
-def run_n_aug(x, y, n_aug, num_classes, flag_save_images):
-    """
-    # x = augmentation.random_noise(x)
-    x = augmentation.horizontal_flip(x)
-    # x = augmentation.vertical_flip(x)
-    x = augmentation.random_crop(x)
-    # x = augmentation.random_transfer(x)
-    # x = augmentation.random_transfer(x)
-    # x = augmentation.random_rotation(x)
-    # x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=alpha)
-    # x = augmentation.cutout(x)
-    # x = augmentation.random_erasing(x)
-    # x, y = augmentation.ricap(image_batch=x, label_batch=y, num_classes=num_classes)
-    """
+def run_n_aug(x, y, n_aug, num_classes, flag_save_images, flag_als=3, n_parameter=0):
+    if flag_als <= 3:
+        if n_aug == 1:
+            x = augmentation.random_noise(x, noise_scale=0.001)
+        elif n_aug == 2:
+            x = augmentation.horizontal_flip(x)
+        elif n_aug == 3:
+            x = augmentation.vertical_flip(x)
+        elif n_aug == 4:
+            x = augmentation.random_crop(x)
+        elif n_aug == 5:
+            x = augmentation.random_translation(x)
+        elif n_aug == 6:
+            x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=1.0)
+        elif n_aug == 7:
+            x = augmentation.cutout(x, scale=2)
+        elif n_aug == 8:
+            x = augmentation.random_erasing(x)
+        elif n_aug == 9:
+            x, y = augmentation.cutmix(image=x, label=y, num_classes=num_classes)
+        elif n_aug == 10:
+            x = augmentation.ch_contrast(x)
 
-    # n_augで指定する場合
-    if n_aug == 1:
-        x = augmentation.horizontal_flip(x)
-        # x = augmentation.vertical_flip(x)
-    elif n_aug == 2:
-        x = augmentation.random_crop(x)
-    elif n_aug == 3:
-        x = augmentation.random_transfer(x)
-    elif n_aug == 4:
-        x = augmentation.random_rotation(x)
-    elif n_aug == 5:  # one-hotなラベルが返される
-        x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes)
-    elif n_aug == 6:
-        x = augmentation.cutout(x)
-    elif n_aug == 7:
-        x = augmentation.random_erasing(x)
-    elif n_aug == 8:  # one-hotなラベルが返される
-        x, y = augmentation.ricap(image_batch=x, label_batch=y, num_classes=num_classes)
-    elif n_aug == 9:
-        x = augmentation.random_noise(x)
+    elif flag_als == 4:
+        if n_aug == 7:
+            if n_parameter == 1:
+                x = augmentation.cutout(x, scale=1.0)
+            elif n_parameter == 2:
+                x = augmentation.cutout(x, scale=1.2)
+            elif n_parameter == 3:
+                x = augmentation.cutout(x, scale=1.4)
+            elif n_parameter == 4:
+                x = augmentation.cutout(x, scale=1.6)
+            elif n_parameter == 5:
+                x = augmentation.cutout(x, scale=1.8)
+            elif n_parameter == 6:
+                x = augmentation.cutout(x, scale=2.0)
+            elif n_parameter == 7:
+                x = augmentation.cutout(x, scale=3.0)
+            elif n_parameter == 8:
+                x = augmentation.cutout(x, scale=4.0)
+            elif n_parameter == 9:
+                x = augmentation.cutout(x, scale=5.0)
+
+    elif flag_als == 5:
+        if n_aug == 1:
+            x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=1.0)
+        elif n_aug == 2:
+            x = augmentation.cutout(x, scale=2)
 
     if flag_save_images == 1:
         save_images(x, 1)
@@ -187,4 +201,3 @@ def calcurate_var_cnn(features, labels, num_classes):
         var[i] = np.sum(np.var(x_i, axis=0))
 
     return np.mean(var)
-

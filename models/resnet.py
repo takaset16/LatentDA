@@ -86,52 +86,29 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, depth, num_classes, num_channel, n_data, bottleneck=False):
+    def __init__(self, depth, num_classes, num_channel, n_data):
         super(ResNet, self).__init__()
         self.num_classes = num_classes
         self.n_data = n_data
 
-        if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-            self.inplanes = 16
-            print(bottleneck)
-            if bottleneck == True:
-                n = int((depth - 2) / 9)
-                block = Bottleneck
-            else:
-                n = int((depth - 2) / 6)
-                block = BasicBlock
+        blocks = {18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck, 152: Bottleneck, 200: Bottleneck}
+        layers = {18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], 200: [3, 24, 36, 3]}
+        assert layers[depth], 'invalid detph for ResNet (depth should be one of 18, 34, 50, 101, 152, and 200)'
 
-            self.conv1 = nn.Conv2d(num_channel, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-            self.bn1 = nn.BatchNorm2d(self.inplanes)
-            self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
-            self.relu = nn.ReLU(inplace=True)
-            self.layer1 = self._make_layer(block, 16, n)
-            self.layer2 = self._make_layer(block, 32, n, stride=2)
-            self.layer3 = self._make_layer(block, 64, n, stride=2)
-            # self.avgpool = nn.AvgPool2d(8)
-            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(64 * block.expansion, num_classes)
-            self.dropout = nn.Dropout(inplace=False)
-
-        elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-            blocks = {18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck, 152: Bottleneck, 200: Bottleneck}
-            layers = {18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], 200: [3, 24, 36, 3]}
-            assert layers[depth], 'invalid detph for ResNet (depth should be one of 18, 34, 50, 101, 152, and 200)'
-
-            self.inplanes = 64
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-            self.bn1 = nn.BatchNorm2d(64)
-            self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
-            self.relu = nn.ReLU(inplace=True)
-            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-            self.layer1 = self._make_layer(blocks[depth], 64, layers[depth][0])
-            self.layer2 = self._make_layer(blocks[depth], 128, layers[depth][1], stride=2)
-            self.layer3 = self._make_layer(blocks[depth], 256, layers[depth][2], stride=2)
-            self.layer4 = self._make_layer(blocks[depth], 512, layers[depth][3], stride=2)
-            # self.avgpool = nn.AvgPool2d(7)
-            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(512 * blocks[depth].expansion, num_classes)
-            self.dropout = nn.Dropout(inplace=False)
+        self.inplanes = 64
+        self.conv1 = nn.Conv2d(num_channel, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(blocks[depth], 64, layers[depth][0])
+        self.layer2 = self._make_layer(blocks[depth], 128, layers[depth][1], stride=2)
+        self.layer3 = self._make_layer(blocks[depth], 256, layers[depth][2], stride=2)
+        self.layer4 = self._make_layer(blocks[depth], 512, layers[depth][3], stride=2)
+        # self.avgpool = nn.AvgPool2d(7)
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(512 * blocks[depth].expansion, num_classes)
+        self.dropout = nn.Dropout(inplace=False)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -158,66 +135,34 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, n_aug=0, layer_aug=0, flag_dropout=0, layer_drop=0, flag_track=1, flag_save_images=0):
-        if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100':
-            if n_aug >= 1 and layer_aug == 0:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x = self.relu(x)
+    def forward(self, x, y, n_aug=0, layer_aug=0, flag_save_images=0, n_parameter=0):
+        if n_aug >= 1 and layer_aug == 0:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
 
-            if n_aug >= 1 and layer_aug == 1:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer1(x)
+        if n_aug >= 1 and layer_aug == 1:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.layer1(x)
 
-            if n_aug >= 1 and layer_aug == 2:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer2(x)
+        if n_aug >= 1 and layer_aug == 2:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.layer2(x)
 
-            if n_aug >= 1 and layer_aug == 3:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer3(x)
+        if n_aug >= 1 and layer_aug == 3:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.layer3(x)
 
-            if n_aug >= 1 and layer_aug == 4:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.avgpool(x)
-            x = x.view(x.size(0), -1)
-            x = self.fc(x)
+        if n_aug >= 1 and layer_aug == 4:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.layer4(x)
 
-            if n_aug >= 1 and layer_aug == 5:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-
-        elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-            if n_aug >= 1 and layer_aug == 0:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x = self.relu(x)
-            x = self.maxpool(x)
-
-            if n_aug >= 1 and layer_aug == 1:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer1(x)
-
-            if n_aug >= 1 and layer_aug == 2:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer2(x)
-
-            if n_aug >= 1 and layer_aug == 3:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer3(x)
-
-            if n_aug >= 1 and layer_aug == 4:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.layer4(x)
-
-            if n_aug >= 1 and layer_aug == 5:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
-            x = self.avgpool(x)
-            x = x.view(x.size(0), -1)
-            x = self.fc(x)
-
-            if n_aug >= 1 and layer_aug == 6:
-                x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images)
+        if n_aug >= 1 and layer_aug == 5:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
 
         return x, y

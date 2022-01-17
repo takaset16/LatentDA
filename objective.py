@@ -16,15 +16,6 @@ class SoftCrossEntropy(nn.Module):
 
         return loss
 
-    def forward_entangled(self, inputs, target, snnl, alpha):  # snnlossをloss functionに追加
-        log_likelihood = - F.log_softmax(inputs, dim=1)
-        loss = (torch.sum(torch.mul(log_likelihood, target)) + alpha * torch.sum(snnl)) / inputs.shape[0]  # サンプル1個あたりのlossを返さないと学習が失敗する
-
-        # snnl_sum = (-1) * (snnl[0] + snnl[1] + snnl[2]) + snnl[3]
-        # loss = (torch.sum(torch.mul(log_likelihood, target)) + alpha * snnl_sum) / inputs.shape[0]  # サンプル1個あたりのlossを返さないと学習が失敗する
-
-        return loss
-
 
 class SmoothCrossEntropyLoss(nn.Module):
     def __init__(self, label_smoothing=0.0, size_average=True):
@@ -37,10 +28,9 @@ class SmoothCrossEntropyLoss(nn.Module):
             target = torch.nn.functional.one_hot(target, num_classes=input.size(-1))
             target = target.float().cuda()
         if self.label_smoothing > 0.0:
-            s_by_c = self.label_smoothing / len(input[0])
             smooth = torch.zeros_like(target)
             smooth = smooth + s_by_c
-            target = target * (1. - s_by_c) + smooth
+            target = target * (1. - self.label_smoothing) + smooth
 
         return cross_entropy(input, target, self.size_average)
 

@@ -1,27 +1,19 @@
 # coding: utf-8
 import numpy as np
 import cv2
-from scipy.misc import imresize
 from scipy.ndimage.interpolation import rotate
 import torch
 import util
-import skimage
-from skimage import data
-import skimage.transform
 
 
-def random_noise(image):
-    noise_scale = 0.001
+def random_noise(image, noise_scale = 0.001):
     if image.ndim == 4:
         n, c, h, w = image.shape
-        # noise = np.random.randn(n, c, h, w)
         noise = torch.normal(mean=0, std=1, size=(n, c, h, w))
     elif image.ndim == 2:
         n, w = image.shape
-        # noise = np.random.randn(n, w)
         noise = torch.normal(mean=0, std=1, size=(n, w))
 
-    # image = image + util.to_device(torch.from_numpy(noise_scale * noise).float())
     image = image + util.to_device((noise_scale * noise).float())
 
     return image
@@ -81,7 +73,7 @@ def random_crop(image):
     return image2
 
 
-def random_transfer(image):
+def random_translation(image):
     n, c, h, w = image.shape
     image2 = torch.zeros(n, c, h, w).cuda()
 
@@ -102,40 +94,7 @@ def random_transfer(image):
     return image2
 
 
-def random_rotation(image):
-    n, c, h, w = image.shape
-    image2 = image.clone()
-    image2 = np.array(image2.data.cpu())
-
-    if c == 1:
-        image2 = np.squeeze(image2)
-    else:
-        image2 = image2.transpose((0, 2, 3, 1))
-
-    rand = np.random.rand(n)
-    for i in range(n):
-        angle = np.random.randint(30)
-        if rand[i] > 0.5:
-            angle = -angle
-
-        if c == 1:
-            image2[i] = skimage.transform.resize(skimage.transform.rotate(image2[i], angle, resize=True), (h, w), order=3)
-        else:
-            image2[i] = skimage.transform.resize(skimage.transform.rotate(image2[i], angle, resize=True), (h, w, c), order=3)
-
-    if c == 1:
-        image2 = image2[:, np.newaxis, :, :]
-    else:
-        image2 = image2.transpose((0, 3, 1, 2))
-
-    image2 = util.to_device(torch.from_numpy(image2).float())  # Tensor
-
-    return image2
-
-
-def mixup(image, label, num_classes):
-    alpha = 1.0
-
+def mixup(image, label, num_classes, alpha=1.0):
     rand_idx = torch.randperm(label.shape[0])
     image2 = image[rand_idx].clone()  # xをシャッフル
     label2 = label[rand_idx].clone()  # yをシャッフル
@@ -159,12 +118,12 @@ def mixup(image, label, num_classes):
     return x_mixed, y_soft
 
 
-def cutout(image):
+def cutout(image, scale=2):
     image2 = image.clone()  # 元の画像を書き換えるので、コピーしておく
 
     if image2.ndim == 4:
         n, _, h, w = image2.shape
-        mask_size = h // 2  # //を使って整数値が返るようにする
+        mask_size = h // scale  # //を使って整数値が返るようにする
 
         for i in range(n):
             mask_value = image2.mean()
@@ -189,7 +148,7 @@ def cutout(image):
 
     elif image2.ndim == 2:
         n, w = image2.shape
-        mask_size = w // 2  # //を使って整数値が返るようにする
+        mask_size = w // scale  # //を使って整数値が返るようにする
 
         for i in range(n):
             mask_value = image2.mean()
@@ -245,77 +204,43 @@ def random_erasing(image, p=0.5, s=(0.02, 0.4), r=(0.3, 3)):
     return image
 
 
-def ricap(image_batch, label_batch, num_classes):
-    image_batch = np.array(image_batch.data.cpu())  # numpy
-    label_batch = np.array(label_batch.data.cpu())  # numpy
+def cutmix(image, label, num_classes):
+    rand_idx = torch.randperm(label.shape[0])
+    image2 = image[rand_idx].clone()  # xをシャッフル
+    label2 = label[rand_idx].clone()  # yをシャッフル
 
-    label_batch = np.identity(num_classes)[label_batch]  # one hot表現に変換
+    y_one_hot = torch.eye(num_classes, device='cuda')[label]  # one hot表現に変換
+    y2_one_hot = torch.eye(num_classes, device='cuda')[label2]  # one hot表現に変換
 
-    alpha = 1.0
-    use_same_random_value_on_batch = False
+    alpha = 0.5
+    mix_rate = np.random.beta(alpha, alpha, image.shape[0])  # サンプルx1の混ぜ合わせ率を決定
 
-    # if use_same_random_value_on_batch = True : same as the original paper
-    batch_size = image_batch.shape[0]
-    image_y = image_batch.shape[2]
-    image_x = image_batch.shape[3]
+    if image2.ndim == 4:
+        n, _, h, w = image2.shape
 
-    # crop_size w, h from beta distribution
-    if use_same_random_value_on_batch:
-        w_dash = np.random.beta(alpha, alpha) * np.ones(batch_size)
-        h_dash = np.random.beta(alpha, alpha) * np.ones(batch_size)
+        for i in range(n):
+            r_x = np.random.randint(w)
+            r_y = np.random.randint(h)
+            r_l = np.sqrt(mix_rate[i])
+            r_w = np.int(w * r_l)
+            r_h = np.int(h * r_l)
+            bx1 = np.int(np.clip(r_x - r_w, 0, w))
+            by1 = np.int(np.clip(r_y - r_h, 0, h))
+            bx2 = np.int(np.clip(r_x + r_w, 0, w))
+            by2 = np.int(np.clip(r_y + r_h, 0, h))
+
+            image2[i][:, bx1:bx2, by1:by2] = image[i][:, bx1:bx2, by1:by2]
+
+        mix_rate = util.to_device(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
+        new_label = mix_rate * y_one_hot + (1 - mix_rate) * y2_one_hot
+
+    return image2, new_label
+
+
+def ch_contrast(image):
+    if image.ndim == 2:
+        rate = torch.rand(image.shape[0], 1) + 0.5  # 0.5 ~ 1.5
     else:
-        w_dash = np.random.beta(alpha, alpha, size=batch_size)
-        h_dash = np.random.beta(alpha, alpha, size=batch_size)
-    w = np.round(w_dash * image_x).astype(np.int32)
-    h = np.round(h_dash * image_y).astype(np.int32)
+        rate = torch.rand(image.shape[0], image.shape[1], 1, 1) + 0.5  # 0.5 ~ 1.5
 
-    # outputs
-    output_images = np.zeros(image_batch.shape)
-    output_labels = np.zeros(label_batch.shape)
-
-    def create_masks(start_xs, start_ys, end_xs, end_ys):
-        mask_x = np.logical_and(np.arange(image_x).reshape(1, 1, 1, -1) >= start_xs.reshape(-1, 1, 1, 1),
-                                np.arange(image_x).reshape(1, 1, 1, -1) < end_xs.reshape(-1, 1, 1, 1))
-        mask_y = np.logical_and(np.arange(image_y).reshape(1, 1, -1, 1) >= start_ys.reshape(-1, 1, 1, 1),
-                                np.arange(image_y).reshape(1, 1, -1, 1) < end_ys.reshape(-1, 1, 1, 1))
-        mask = np.logical_and(mask_y, mask_x)
-        mask = np.logical_and(mask, np.repeat(True, image_batch.shape[1]).reshape(1, -1, 1, 1))
-
-        return mask
-
-    def crop_concatenate(wk, hk, start_x, start_y, end_x, end_y):
-        nonlocal output_images, output_labels  # Python 3のみ
-        xk = (np.random.rand(batch_size) * (image_x - wk)).astype(np.int32)
-        yk = (np.random.rand(batch_size) * (image_y - hk)).astype(np.int32)
-        target_indices = np.arange(batch_size)
-        np.random.shuffle(target_indices)
-        weights = wk * hk / image_x / image_y
-
-        dest_mask = create_masks(start_x, start_y, end_x, end_y)
-        target_mask = create_masks(xk, yk, xk + wk, yk + hk)
-
-        output_images[dest_mask] = image_batch[target_indices][target_mask]
-        output_labels += weights.reshape(-1, 1) * label_batch[target_indices]
-
-    # left-top crop
-    crop_concatenate(w, h,
-                     np.repeat(0, batch_size), np.repeat(0, batch_size),
-                     w, h)
-    # right-top crop
-    crop_concatenate(image_x - w, h,
-                     w, np.repeat(0, batch_size),
-                     np.repeat(image_x, batch_size), h)
-    # left-bottom crop
-    crop_concatenate(w, image_y - h,
-                     np.repeat(0, batch_size), h,
-                     w, np.repeat(image_y, batch_size))
-    # right-bottom crop
-    crop_concatenate(image_x - w, image_y - h,
-                     w, h, np.repeat(image_x, batch_size),
-                     np.repeat(image_y, batch_size))
-
-    output_images = util.to_device(torch.from_numpy(output_images).float())  # Tensor
-    output_labels = util.to_device(torch.from_numpy(output_labels).float())  # Tensor
-    label_batch = util.to_device(torch.from_numpy(label_batch).float())  # Tensor
-
-    return output_images, output_labels
+    return image * util.to_device(rate.float())

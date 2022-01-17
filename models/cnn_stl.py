@@ -1,7 +1,5 @@
 # coding: utf-8
-import torch
 import torch.nn as nn
-import cv2
 import numpy as np
 import util
 
@@ -30,9 +28,16 @@ class ConvNet(nn.Module):
             nn.MaxPool2d(2, 2),
             nn.BatchNorm2d(64),
             nn.ReLU())
-
-        self.fc = nn.Linear(size_after_cnn * size_after_cnn * 64, num_classes)
-        self.dropout = nn.Dropout(inplace=False)
+        self.layer5 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3),
+            nn.BatchNorm2d(128),
+            nn.ReLU())
+        self.layer6 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3),
+            nn.MaxPool2d(2, 2),
+            nn.BatchNorm2d(128),
+            nn.ReLU())
+        self.fc = nn.Linear(size_after_cnn * size_after_cnn * 128, num_classes)
 
     def forward(self, x, y, n_aug=0, layer_aug=0, flag_save_images=0, n_parameter=0):
         if n_aug >= 1 and layer_aug == 0:
@@ -53,10 +58,15 @@ class ConvNet(nn.Module):
 
         if n_aug >= 1 and layer_aug == 4:
             x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
-        x = x.reshape(x.size(0), -1)
-        x = self.fc(x)
+        x = self.layer5(x)
 
         if n_aug >= 1 and layer_aug == 5:
             x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = self.layer6(x)
 
-        return x, y  # all the outputs must be the type of tensor
+        if n_aug >= 1 and layer_aug == 6:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+        x = x.reshape(x.size(0), -1)
+        x = self.fc(x)
+
+        return x, y
