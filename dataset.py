@@ -162,8 +162,9 @@ class MyDataset_training(Dataset):
             # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 * 0.35), seed)
             # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 - 500), seed)
 
-        if num_data != 0:  # If small number of samples are used
-            self.mydata = util.make_training_data(self.mydata, num_data, seed)
+        if num_data != 0:
+        #   self.mydata = util.make_training_data(self.mydata, num_data, seed)
+            self.mydata.data = self.mydata.data[0:num_data]
 
     def __getitem__(self, index):
         x, y = self.mydata[index]
@@ -371,13 +372,13 @@ class MyDataset_als(Dataset):
                 transform_train = transforms.Compose([
                     transforms.RandomCrop(32, padding=4),
                     transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(degrees=10),
+                    transforms.RandomRotation(degrees=30),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
                 ])
             else:
                 transform_train = transforms.Compose([
-                    transforms.RandomRotation(degrees=10),
+                    transforms.RandomRotation(degrees=30),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
                 ])
@@ -496,7 +497,8 @@ class MyDataset_als(Dataset):
             # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 - 500), seed)
 
         if num_data != 0:
-            self.mydata = util.make_training_data(self.mydata, num_data, seed)
+        #   self.mydata = util.make_training_data(self.mydata, num_data, seed)
+            self.mydata.data = self.mydata.data[0:num_data]
 
     def __getitem__(self, index):
         x, y = self.mydata[index]

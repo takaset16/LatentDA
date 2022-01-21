@@ -43,20 +43,18 @@ def main():
     parser.add_argument('--flag_traintest', type=int, default=0)
     parser.add_argument('--flag_als', type=int, default=0)
     parser.add_argument('--initial_als_rate', type=float, default=0.001)
-    parser.add_argument('--epoch_random', type=int, default=0)
     parser.add_argument('--iter_interval', type=int, default=1)
     parser.add_argument('--flag_adversarial', type=int, default=0)
     parser.add_argument('--flag_alstest', type=int, default=0)
     parser.add_argument('--flag_als_acc', type=int, default=0)
     parser.add_argument('--temp', type=float, default=1.0)
-    parser.add_argument('--mean_visual', type=int, default=1)
     parser.add_argument('--flag_defaug', type=int, default=1)
     parser.add_argument('--flag_sign', type=int, default=0)
     parser.add_argument('--flag_rate_fix', type=int, default=0)
     args = parser.parse_args()
 
     if args.flag_wandb == 1:  # Weights and Biases
-        wandb.init(project="LatentDA_017", config=args, dir="../../../../../groups/gac50437/wandb/LatentDA")
+        wandb.init(project="LatentDA_016", config=args, dir="../../../../../groups/gac50437/wandb/LatentDA")
         args = wandb.config
 
     main_params = main_nn.MainNN(loop=args.loop,
@@ -87,13 +85,11 @@ def main():
                                  flag_traintest=args.flag_traintest,
                                  flag_als=args.flag_als,
                                  initial_als_rate=args.initial_als_rate,
-                                 epoch_random=args.epoch_random,
                                  iter_interval=args.iter_interval,
                                  flag_adversarial=args.flag_adversarial,
                                  flag_alstest=args.flag_alstest,
                                  flag_als_acc=args.flag_als_acc,
                                  temp=args.temp,
-                                 mean_visual=args.mean_visual,
                                  flag_defaug=args.flag_defaug,
                                  flag_sign=args.flag_sign,
                                  flag_rate_fix=args.flag_rate_fix

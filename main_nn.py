@@ -12,8 +12,8 @@ class MainNN(object):
     def __init__(self, loop, n_data, gpu_multi, hidden_size, num_samples, num_epochs, batch_size_training, batch_size_test, batch_size_als,
                  n_model, opt, save_file, save_images, flag_acc5, flag_horovod, cutout, n_aug, flag_randaug,
                  rand_n, rand_m, flag_lr_schedule, flag_warmup, layer_aug, flag_random_layer, flag_wandb,
-                 flag_traintest, flag_als, initial_als_rate, epoch_random, iter_interval, flag_adversarial, flag_alstest, flag_als_acc,
-                 temp, mean_visual, flag_defaug, flag_sign, flag_rate_fix):
+                 flag_traintest, flag_als, initial_als_rate, iter_interval, flag_adversarial, flag_alstest, flag_als_acc,
+                 temp, flag_defaug, flag_sign, flag_rate_fix):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
@@ -61,13 +61,11 @@ class MainNN(object):
         self.flag_als = flag_als
         self.num_layer = 0
         self.initial_als_rate = initial_als_rate
-        self.epoch_random = epoch_random
         self.iter_interval = iter_interval
         self.flag_adversarial = flag_adversarial
         self.flag_alstest = flag_alstest
         self.flag_als_accuracy = flag_als_acc
         self.temp = temp
-        self.mean_visual = mean_visual
         self.flag_sign = flag_sign
         self.flag_rate_fix = flag_rate_fix
         self.num_aug = 1
@@ -153,7 +151,7 @@ class MainNN(object):
         self.test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size_test, sampler=test_sampler,
                                                        shuffle=test_shuffle, num_workers=num_workers, pin_memory=pin)
         if self.flag_als > 0:
-            self.als_loader = torch.utils.data.DataLoader(dataset=als_dataset, batch_size=self.batch_size_training, sampler=als_sampler,
+            self.als_loader = torch.utils.data.DataLoader(dataset=als_dataset, batch_size=self.batch_size_als, sampler=als_sampler,
                                                           shuffle=train_shuffle, num_workers=num_workers, pin_memory=pin)
 
         """neural network model"""
@@ -345,7 +343,11 @@ class MainNN(object):
             else:
                 self.num_layer = 5
         elif self.n_model == 'ResNet18' or self.n_model == 'ResNet50':
-            self.num_layer = 6
+            if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100' or self.n_data == 'SVHN':
+                # self.num_layer = 6
+                self.num_layer = 5
+            elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
+                self.num_layer = 6
         elif self.n_model == 'WideResNet':
             self.num_layer = 6
         elif self.n_model == 'MLP':
@@ -369,13 +371,11 @@ class MainNN(object):
             self.num_aug = 1
 
         layer_rate = np.zeros((self.num_layer, self.num_aug))
-        layer_rate_interval = np.zeros((self.num_layer, self.num_aug))
-        layer_rate_visual = np.zeros((self.num_layer, self.num_aug))
+        layer_rate_delta = np.zeros((self.num_layer, self.num_aug))
 
         func_sign_iter = np.zeros(self.num_layer)
         count_interval = 0
         count_aug_layer = np.zeros(self.num_layer, dtype=int)
-        count_aug_layer_visual = np.zeros(self.num_layer, dtype=int)
         grad_loss_training_aug = None
         grad_loss = 0
         values_als_before = None
@@ -392,23 +392,20 @@ class MainNN(object):
             values_als_before = 0
 
         """Decide an initial als_rate"""
-        if self.flag_rate_fix == 0:
+        if self.flag_rate_fix == 1:
+            layer_rate = np.loadtxt('results/rate_final/data_%s_model_%s_aug_%s_als_%s_initial_%s_interval_%s_adv_%s_seed_%s.csv'
+                         % (self.n_data, self.n_model, self.n_aug, self.flag_als, self.initial_als_rate, self.iter_interval,
+                          self.flag_adversarial, self.seed), delimiter=',')
+        else:
             sum = 0
 
             for i in range(self.num_layer):
                 for j in range(self.num_aug):
                     if i < self.num_layer - 1 or j < self.num_aug - 1:
                         layer_rate[i][j] = 1.0 / (self.num_layer * self.num_aug)
-                        layer_rate_visual[i][j] = 1.0 / (self.num_layer * self.num_aug)
                         sum += layer_rate[i][j]
 
             layer_rate[self.num_layer - 1][self.num_aug - 1] = 1.0 - sum
-            layer_rate_visual[self.num_layer - 1][self.num_aug - 1] = 1.0 - sum
-        else:
-            layer_rate = np.loadtxt('results/rate_final/data_%s_model_%s_aug_%s_als_%s_initial_%s_interval_%s_adv_%s_seed_%s.csv'
-                         % (self.n_data, self.n_model, self.n_aug, self.flag_als, self.initial_als_rate, self.iter_interval,
-                          self.flag_adversarial, self.seed), delimiter=',')
-            layer_rate_visual = layer_rate.copy()
 
         for epoch in range(self.num_epochs):
             """Training"""
@@ -447,7 +444,7 @@ class MainNN(object):
                 if self.flag_als > 0:
                     if self.flag_rate_fix == 0:
                         model.eval()
-                        if self.flag_als == 1 and epoch >= self.epoch_random:  # ALS
+                        if self.flag_als == 1:  # ALS
                             outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
 
                             if self.flag_als_accuracy == 1:  # if accuracy is used instead of loss for ALS
@@ -461,7 +458,7 @@ class MainNN(object):
 
                                 values_als_before = criterion.forward(outputs_als, labels_als).item()
 
-                        elif self.flag_als >= 2 and epoch >= self.epoch_random:  # gradient descent
+                        elif self.flag_als >= 2:  # gradient descent
                             outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
 
                             if labels_als.ndim == 1:
@@ -497,7 +494,7 @@ class MainNN(object):
                         kind_aug = n_ex % self.num_aug
                         if self.flag_als == 3 or self.flag_als == 5:
                             n_aug = kind_aug + 1
-                        else:
+                        elif self.flag_als == 4:
                             n_parameter = kind_aug + 1
                 else:
                     if self.flag_random_layer == 1:
@@ -540,12 +537,11 @@ class MainNN(object):
 
                 """Compute layer rate"""
                 if self.flag_als > 0 and self.flag_rate_fix == 0:
-                    if self.flag_als == 2 or self.flag_als == 3:
-                        count_aug_layer[layer_aug] += 1
-                        count_aug_layer_visual[layer_aug] += 1
-
                     if self.flag_als == 1:
                         model.eval()
+
+                        count_aug_layer[layer_aug] += 1
+                        count_aug_layer_visual[layer_aug] += 1
 
                         outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
 
@@ -561,52 +557,33 @@ class MainNN(object):
                             values_als_after = criterion.forward(outputs_als, labels_als).item()
 
                         delta_loss = values_als_before - values_als_after
-                        if epoch < self.epoch_random:
-                            if delta_loss > 0:
-                                func_sign_iter[layer_aug] = func_sign_iter[layer_aug] + 1
-                        elif self.epoch_random > 0 and epoch == self.epoch_random and i == 0:
+                        if i == 0:
                             layer_rate = func_sign_iter / np.sum(func_sign_iter)
                             func_sign_iter = np.zeros(self.num_layer)
 
-                        if epoch >= self.epoch_random:
-                            if self.flag_sign == 1:
-                                if delta_loss > 0:
-                                    func_sign = 1
-                                elif delta_loss == 0:
-                                    func_sign = 0
-                                else:
-                                    func_sign = -1
-
-                                func_sign_iter[layer_aug] += func_sign
+                        if self.flag_sign == 1:
+                            if delta_loss > 0:
+                                func_sign = 1
+                            elif delta_loss == 0:
+                                func_sign = 0
                             else:
-                                func_sign_iter[layer_aug] += delta_loss
+                                func_sign = -1
 
-                            if (self.iter + 1) % self.iter_interval == 0:
-                                # gradient descent
-                                """
-                                if self.flag_adversarial == 1:
-                                    for j in range(self.num_layer):
-                                        if count_aug_layer[j] > 0:
-                                            layer_rate[j] -= als_rate  * func_sign_iter[j] / count_aug_layer[j]
-                                else:
-                                    for j in range(self.num_layer):
-                                        if count_aug_layer[j] > 0:
-                                            layer_rate[j] += als_rate * func_sign_iter[j] / count_aug_layer[j]
-                                """
+                            func_sign_iter[layer_aug] += func_sign
+                        else:
+                            func_sign_iter[layer_aug] += delta_loss
 
-                                # RMSProp
-                                grad_loss_mean = grad_loss.cpu() / self.iter_interval
-                                h0_rms = 0.9 * h0_rms + 0.1 * (grad_loss_mean ** 2)
-                                if self.flag_adversarial == 1:
-                                    for j in range(self.num_layer):
-                                        if count_aug_layer[j] > 0:
-                                            layer_rate[j] -= self.initial_als_rate * (1 / np.sqrt(h0_rms) + 1e-8) * grad_loss_mean / (np.sqrt(h0_rms) + 1e-8)
-                                else:
-                                    for j in range(self.num_layer):
-                                        if count_aug_layer[j] > 0:
-                                            layer_rate[j] += self.initial_als_rate * (1 / np.sqrt(h0_rms) + 1e-8) * grad_loss_mean / (np.sqrt(h0_rms) + 1e-8)
+                        if (self.iter + 1) % self.iter_interval == 0:
+                            if self.flag_adversarial == 1:
+                                for j in range(self.num_layer):
+                                    if count_aug_layer[j] > 0:
+                                        layer_rate[j] -= als_rate  * func_sign_iter[j] / count_aug_layer[j]
+                            else:
+                                for j in range(self.num_layer):
+                                    if count_aug_layer[j] > 0:
+                                        layer_rate[j] += als_rate * func_sign_iter[j] / count_aug_layer[j]
 
-                                func_sign_iter = np.zeros(self.num_layer)
+                            func_sign_iter = np.zeros(self.num_layer)
 
                     elif self.flag_als >= 2:  # gradient descent
                         grad_loss_training = None
@@ -633,26 +610,27 @@ class MainNN(object):
                                 else:
                                     func_sign = -1
 
-                            grad_loss += func_sign
+                            grad_loss = func_sign
                         else:
-                            grad_loss += torch.dot(torch.t(grad_loss_training_aug), grad_loss_training)
+                            grad_loss = torch.dot(torch.t(grad_loss_training_aug), grad_loss_training)
+
+                        # gradient descent
+                        """
+                        if self.flag_adversarial == 1:
+                            layer_rate[layer_aug][kind_aug] -= als_rate * grad_loss
+                        else:
+                            layer_rate[layer_aug][kind_aug] += als_rate * grad_loss
+                        """
+
+                        # RMSProp
+                        h0_rms = 0.9 * h0_rms + 0.1 * (grad_loss.cpu() ** 2)
+                        if self.flag_adversarial == 1:
+                            layer_rate_delta[layer_aug][kind_aug] -= self.initial_als_rate * (1 / np.sqrt(h0_rms + 1e-8)) * grad_loss.cpu()
+                        else:
+                            layer_rate_delta[layer_aug][kind_aug] += self.initial_als_rate * (1 / np.sqrt(h0_rms + 1e-8)) * grad_loss.cpu()
 
                         if (self.iter + 1) % self.iter_interval == 0:
-                            # gradient descent
-                            """
-                            if self.flag_adversarial == 1:
-                                layer_rate[layer_aug][kind_aug] -= als_rate * grad_loss / self.iter_interval
-                            else:
-                                layer_rate[layer_aug][kind_aug] += als_rate * grad_loss / self.iter_interval
-                            """
-
-                            # RMSProp
-                            grad_loss_mean = grad_loss.cpu() / self.iter_interval
-                            h0_rms = 0.9 * h0_rms + 0.1 * (grad_loss.cpu() / self.iter_interval) ** 2
-                            if self.flag_adversarial == 1:
-                                layer_rate[layer_aug][kind_aug] -= self.initial_als_rate * (1 / np.sqrt(h0_rms + 1e-8)) * grad_loss_mean
-                            else:
-                                layer_rate[layer_aug][kind_aug] += self.initial_als_rate * (1 / np.sqrt(h0_rms + 1e-8)) * grad_loss_mean
+                            layer_rate += layer_rate_delta / self.iter_interval
 
                         grad_loss = 0
 
@@ -672,17 +650,11 @@ class MainNN(object):
                                     layer_rate[j] = 0.0001
 
                         layer_rate = layer_rate / np.sum(layer_rate)
-                        layer_rate_interval += layer_rate
-                        if self.flag_als != 3:
-                            count_aug_layer = np.zeros(self.num_layer, dtype=int)
-                        count_interval += 1
 
-                        if count_interval % self.mean_visual == 0:
-                            layer_rate_visual = layer_rate_interval / self.mean_visual
-                            if self.flag_als >= 2:
-                                layer_rate_interval = np.zeros((self.num_layer, self.num_aug))
-                            else:
-                                layer_rate_interval = np.zeros(self.num_layer)
+                        if self.flag_als == 1:
+                            count_aug_layer = np.zeros(self.num_layer, dtype=int)
+                        else:
+                            layer_rate_delta = np.zeros((self.num_layer, self.num_aug))
 
                 """Update learning rate"""
                 self.iter += 1
@@ -786,7 +758,7 @@ class MainNN(object):
                     for j in range(self.num_layer):
                         for k in range(self.num_aug):
                             wandb.log({"epoch": epoch,
-                                       "rate_p%s_d%s" % (j, k): layer_rate_visual[j][k],
+                                       "rate_p%s_d%s" % (j, k): layer_rate[j][k],
                                        "loss_training": loss_training_each,
                                        "learning_rate": learning_rate,
                                        "test_acc": top1_avg,
@@ -815,8 +787,6 @@ class MainNN(object):
         if flag_log == 1:
             print(' ran for %.4fm' % ((end_time - start_time) / 60.))
 
-        top1_avg_max = 0
-        if flag_log == 1:
             top1_avg_max = np.max(results[:, 1])
             print(top1_avg_max)
             if self.flag_acc5 == 1:
@@ -826,17 +796,11 @@ class MainNN(object):
         """Save results"""
         if self.save_file == 1:
             if flag_log == 1:
-                """
-                if self.flag_als >= 1:
-                    np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_aug_%s_als_%s_layer_aug_%s_alsrate_%s_epochrand_%s_interval_%s_adv_%s_seed_%s_acc_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.n_aug, self.flag_als, self.layer_aug, als_rate, self.epoch_random, self.iter_interval, self.flag_adversarial,
+                if self.flag_horovod == 1:
+                    np.savetxt('results/data_%s_model_%s_aug_%s_als_%s_randlayer_%s_layer_aug_%s_interval_%s_adv_%s_seed_%s_acc_%s.csv'
+                               % (self.n_data, self.n_model, self.n_aug, self.flag_als, self.flag_random_layer, self.layer_aug, self.iter_interval, self.flag_adversarial,
                                   self.seed, top1_avg_max),
                                results, delimiter=',')
-                else:
-                    np.savetxt('results/data_%s_model_%s_num_%s_batch_%s_aug_%s_als_%s_layer_aug_%s_randlayer_%s_seed_%s_acc_%s.csv'
-                               % (self.n_data, self.n_model, self.num_training_data, self.batch_size_training, self.n_aug, self.flag_als, self.layer_aug, self.flag_random_layer, self.seed, top1_avg_max),
-                               results, delimiter=',')
-                """
 
                 if self.flag_als >= 1 and self.flag_rate_fix == 0:
                     np.savetxt('results/rate_final/data_%s_model_%s_aug_%s_als_%s_initial_%s_interval_%s_adv_%s_seed_%s.csv'

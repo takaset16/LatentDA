@@ -103,7 +103,6 @@ def mixup(image, label, num_classes, alpha=1.0):
     y2_one_hot = torch.eye(num_classes, device='cuda')[label2]  # one hot表現に変換
     mix_rate = np.random.beta(alpha, alpha, image.shape[0])  # サンプルx1の混ぜ合わせ率を決定
 
-    """入力、ラベルを混ぜ合わせる"""
     mix_rate2 = None
     if image.ndim == 2:
         mix_rate2 = util.to_device(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
@@ -203,6 +202,34 @@ def random_erasing(image, p=0.5, s=(0.02, 0.4), r=(0.3, 3)):
 
     return image
 
+"""
+def random_erasing(img, p=0.5, sl=0.02, sh=0.4, r1=0.3, r2=3.3):
+    target_img = img.copy()
+
+    if p < np.random.rand():
+        return target_img
+
+    H, W, _ = target_img.shape
+    S = H * W
+
+    while True:
+        Se = np.random.uniform(sl, sh) * S
+        re = np.random.uniform(r1, r2)
+
+        He = int(np.sqrt(Se * re))
+        We = int(np.sqrt(Se / re))
+
+        xe = np.random.randint(0, W)
+        ye = np.random.randint(0, H)
+
+        if xe + We <= W and ye + He <= H:
+            break
+
+    mask = np.random.randint(0, 255, (He, We, 3))
+    target_img[ye:ye + He, xe:xe + We, :] = mask
+
+    return target_img
+"""
 
 def cutmix(image, label, num_classes):
     rand_idx = torch.randperm(label.shape[0])
