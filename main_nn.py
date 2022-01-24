@@ -13,7 +13,7 @@ class MainNN(object):
                  n_model, opt, save_file, save_images, flag_acc5, flag_horovod, cutout, n_aug, flag_randaug,
                  rand_n, rand_m, flag_lr_schedule, flag_warmup, layer_aug, flag_random_layer, flag_wandb,
                  flag_traintest, flag_als, initial_als_rate, iter_interval, flag_adversarial, flag_alstest, flag_als_acc,
-                 temp, flag_defaug, flag_sign, flag_rate_fix):
+                 temp, flag_defaug, flag_sign, flag_rate_fix, num_aug):
         """"""
         """基本要素"""
         self.seed = 1001 + loop
@@ -68,7 +68,7 @@ class MainNN(object):
         self.temp = temp
         self.flag_sign = flag_sign
         self.flag_rate_fix = flag_rate_fix
-        self.num_aug = 1
+        self.num_aug = num_aug
 
     def run_main(self):
         if self.flag_horovod == 1:
@@ -367,8 +367,6 @@ class MainNN(object):
                 self.num_aug = 9
         elif self.flag_als == 5:
             self.num_aug = 2
-        else:
-            self.num_aug = 1
 
         layer_rate = np.zeros((self.num_layer, self.num_aug))
         layer_rate_delta = np.zeros((self.num_layer, self.num_aug))
@@ -499,6 +497,9 @@ class MainNN(object):
                 else:
                     if self.flag_random_layer == 1:
                         layer_aug = np.random.randint(self.num_layer)
+                        if self.num_aug == 2:
+                            layer_aug = np.random.randint(self.num_layer)
+                            n_aug = np.random.randint(2) + 6  # mixup or cutout
                     else:
                         layer_aug = self.layer_aug
 
@@ -511,7 +512,7 @@ class MainNN(object):
                         flag_save_images = 1
                         # util.save_images(images, 0)  # input images
 
-                outputs, labels = model(x=images, y=labels, n_aug=n_aug, layer_aug=layer_aug, flag_save_images=flag_save_images, n_parameter=n_parameter)
+                outputs, labels = model(x=images, y=labels, n_aug=n_aug, layer_aug=layer_aug, flag_save_images=flag_save_images, flag_als=self.flag_als, n_parameter=n_parameter)
 
                 if labels.ndim == 1:
                     labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # To one-hot

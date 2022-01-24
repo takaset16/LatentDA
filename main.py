@@ -51,10 +51,11 @@ def main():
     parser.add_argument('--flag_defaug', type=int, default=1)
     parser.add_argument('--flag_sign', type=int, default=0)
     parser.add_argument('--flag_rate_fix', type=int, default=0)
+    parser.add_argument('--num_aug', type=int, default=1)
     args = parser.parse_args()
 
     if args.flag_wandb == 1:  # Weights and Biases
-        wandb.init(project="LatentDA_016", config=args, dir="../../../../../groups/gac50437/wandb/LatentDA")
+        wandb.init(project="LatentDA_018", config=args, dir="../../../../../groups/gac50437/wandb/LatentDA")
         args = wandb.config
 
     main_params = main_nn.MainNN(loop=args.loop,
@@ -92,7 +93,8 @@ def main():
                                  temp=args.temp,
                                  flag_defaug=args.flag_defaug,
                                  flag_sign=args.flag_sign,
-                                 flag_rate_fix=args.flag_rate_fix
+                                 flag_rate_fix=args.flag_rate_fix,
+                                 num_aug=args.num_aug
                                  )
     main_params.run_main()
 

@@ -122,7 +122,7 @@ def cutout(image, scale=2):
 
     if image2.ndim == 4:
         n, _, h, w = image2.shape
-        mask_size = h // scale  # //を使って整数値が返るようにする
+        mask_size = int(h // scale)  # //を使って整数値が返るようにする
 
         for i in range(n):
             mask_value = image2.mean()

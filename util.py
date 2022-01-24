@@ -59,7 +59,7 @@ def make_training_test_data(x, num, seed):  # 訓練データとテストデー�
     return x_training, x_test
 
 
-def run_n_aug(x, y, n_aug, num_classes, flag_save_images, flag_als=3, n_parameter=0):
+def run_n_aug(x, y, n_aug, num_classes, flag_save_images, flag_als, n_parameter):
     if flag_als <= 3:
         if n_aug == 1:
             x = augmentation.random_noise(x, noise_scale=0.001)
@@ -110,12 +110,12 @@ def run_n_aug(x, y, n_aug, num_classes, flag_save_images, flag_als=3, n_paramete
             x = augmentation.cutout(x, scale=2)
 
     if flag_save_images == 1:
-        save_images(x, 1)
+        save_images(x, n_aug)
 
     return x, y
 
 
-def save_images(images, flag_aug):
+def save_images(images, n_aug):
     resize = 128
     n, c, h, w = images.shape
 
@@ -132,7 +132,7 @@ def save_images(images, flag_aug):
         else:
             img_bgr = random_images_reshape[:, :, [2, 1, 0]]  # 色の順番をRGBからBGRに変更
 
-        cv2.imwrite('images/input/image_%d_aug_%d.png' % (i, flag_aug), img_bgr)  # 画像を出力
+        cv2.imwrite('images/input/image_%d_aug_%d.png' % (i, n_aug), img_bgr)  # 画像を出力
 
 
 def save_images_ch(images, n_layer):  # チャンネルごとに画像保存
