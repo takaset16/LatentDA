@@ -360,13 +360,18 @@ class MainNN(object):
             results = np.zeros((self.num_epochs, 4))
         start_time = timeit.default_timer()
 
-        if self.flag_als == 3:
-            self.num_aug = 10
-        elif self.flag_als == 4:
-            if self.n_aug == 7:  # cutout
-                self.num_aug = 9
-        elif self.flag_als == 5:
-            self.num_aug = 2
+        if self.num_aug == 0:
+            if self.flag_als == 3:
+                self.num_aug = 10
+            elif self.flag_als == 4:
+                if self.n_aug == 7:  # cutout
+                    # self.num_aug = 9
+                    self.num_aug = 5
+            elif self.flag_als == 5:
+                # self.num_aug = 2
+                self.num_aug = 3
+            elif self.flag_als == 6:
+                self.num_aug = 6
 
         layer_rate = np.zeros((self.num_layer, self.num_aug))
         layer_rate_delta = np.zeros((self.num_layer, self.num_aug))
@@ -420,6 +425,9 @@ class MainNN(object):
             total_steps = len(self.train_loader)
             num_training_data = 0
 
+            loss_als_all = 0
+            num_als_all = 0
+
             if self.flag_als >= 1:
                 for i, (images, labels, _) in enumerate(self.als_loader):
                     if i == 0:
@@ -443,7 +451,7 @@ class MainNN(object):
                     if self.flag_rate_fix == 0:
                         model.eval()
                         if self.flag_als == 1:  # ALS
-                            outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
+                            outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, num_aug=0, layer_aug=0)
 
                             if self.flag_als_accuracy == 1:  # if accuracy is used instead of loss for ALS
                                 _, predicted = torch.max(outputs_als.data, 1)
@@ -463,6 +471,9 @@ class MainNN(object):
                                 labels_als = torch.eye(self.num_classes, device='cuda')[labels_als].clone()  # To one-hot
 
                             loss_training_before = criterion.forward(outputs_als, labels_als)
+
+                            loss_als_all += loss_training_before.item() * outputs_als.shape[0]
+                            num_als_all += outputs_als.shape[0]
 
                             optimizer.zero_grad()
                             loss_training_before.backward()  # compute gradients
@@ -492,7 +503,7 @@ class MainNN(object):
                         kind_aug = n_ex % self.num_aug
                         if self.flag_als == 3 or self.flag_als == 5:
                             n_aug = kind_aug + 1
-                        elif self.flag_als == 4:
+                        elif self.flag_als == 4 or self.flag_als == 6:
                             n_parameter = kind_aug + 1
                 else:
                     if self.flag_random_layer == 1:
@@ -500,6 +511,9 @@ class MainNN(object):
                         if self.num_aug == 2:
                             layer_aug = np.random.randint(self.num_layer)
                             n_aug = np.random.randint(2) + 6  # mixup or cutout
+                        elif self.num_aug == 10:
+                            layer_aug = np.random.randint(self.num_layer)
+                            n_aug = np.random.randint(10) + 1
                     else:
                         layer_aug = self.layer_aug
 
@@ -512,7 +526,7 @@ class MainNN(object):
                         flag_save_images = 1
                         # util.save_images(images, 0)  # input images
 
-                outputs, labels = model(x=images, y=labels, n_aug=n_aug, layer_aug=layer_aug, flag_save_images=flag_save_images, flag_als=self.flag_als, n_parameter=n_parameter)
+                outputs, labels = model(x=images, y=labels, n_aug=n_aug, num_aug=self.num_aug, layer_aug=layer_aug, flag_save_images=flag_save_images, flag_als=self.flag_als, n_parameter=n_parameter)
 
                 if labels.ndim == 1:
                     labels = torch.eye(self.num_classes, device='cuda')[labels].clone()  # To one-hot
@@ -544,7 +558,7 @@ class MainNN(object):
                         count_aug_layer[layer_aug] += 1
                         count_aug_layer_visual[layer_aug] += 1
 
-                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, layer_aug=0)
+                        outputs_als, labels_als = model(x=images_als_origin, y=labels_als_origin, n_aug=0, num_aug=0, layer_aug=0)
 
                         if self.flag_als_accuracy == 1:
                             _, predicted = torch.max(outputs_als.data, 1)
@@ -665,6 +679,10 @@ class MainNN(object):
                     scheduler.step(epoch + float(step) / total_steps)
 
             loss_training_each = loss_training_all / num_training_data  # Loss for each sample
+            if self.flag_als > 0:
+                loss_als_each = loss_als_all / (num_als_all * total_steps)
+            else:
+                loss_als_each = loss_training_each
             step = 0
 
             """Test"""
@@ -761,6 +779,7 @@ class MainNN(object):
                             wandb.log({"epoch": epoch,
                                        "rate_p%s_d%s" % (j, k): layer_rate[j][k],
                                        "loss_training": loss_training_each,
+                                       # "loss_als": loss_als_each,
                                        "learning_rate": learning_rate,
                                        "test_acc": top1_avg,
                                        "loss_test": loss_test_each

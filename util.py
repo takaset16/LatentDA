@@ -59,7 +59,7 @@ def make_training_test_data(x, num, seed):  # 訓練データとテストデー�
     return x_training, x_test
 
 
-def run_n_aug(x, y, n_aug, num_classes, flag_save_images, flag_als, n_parameter):
+def run_n_aug(x, y, n_aug, num_aug, num_classes, flag_save_images, flag_als, n_parameter):
     if flag_als <= 3:
         if n_aug == 1:
             x = augmentation.random_noise(x, noise_scale=0.001)
@@ -84,30 +84,90 @@ def run_n_aug(x, y, n_aug, num_classes, flag_save_images, flag_als, n_parameter)
 
     elif flag_als == 4:
         if n_aug == 7:
-            if n_parameter == 1:
-                x = augmentation.cutout(x, scale=1.0)
-            elif n_parameter == 2:
-                x = augmentation.cutout(x, scale=1.2)
-            elif n_parameter == 3:
-                x = augmentation.cutout(x, scale=1.4)
-            elif n_parameter == 4:
-                x = augmentation.cutout(x, scale=1.6)
-            elif n_parameter == 5:
-                x = augmentation.cutout(x, scale=1.8)
-            elif n_parameter == 6:
-                x = augmentation.cutout(x, scale=2.0)
-            elif n_parameter == 7:
-                x = augmentation.cutout(x, scale=3.0)
-            elif n_parameter == 8:
-                x = augmentation.cutout(x, scale=4.0)
-            elif n_parameter == 9:
-                x = augmentation.cutout(x, scale=5.0)
+            if num_aug == 9:
+                if n_parameter == 1:
+                    x = augmentation.cutout(x, scale=1.0)
+                elif n_parameter == 2:
+                    x = augmentation.cutout(x, scale=1.2)
+                elif n_parameter == 3:
+                    x = augmentation.cutout(x, scale=1.4)
+                elif n_parameter == 4:
+                    x = augmentation.cutout(x, scale=1.6)
+                elif n_parameter == 5:
+                    x = augmentation.cutout(x, scale=1.8)
+                elif n_parameter == 6:
+                    x = augmentation.cutout(x, scale=2.0)
+                elif n_parameter == 7:
+                    x = augmentation.cutout(x, scale=3.0)
+                elif n_parameter == 8:
+                    x = augmentation.cutout(x, scale=4.0)
+                elif n_parameter == 9:
+                    x = augmentation.cutout(x, scale=5.0)
+
+            elif num_aug == 5:
+                if n_parameter == 1:
+                    x = augmentation.cutout(x, scale=1.5)
+                elif n_parameter == 2:
+                    x = augmentation.cutout(x, scale=2.0)
+                elif n_parameter == 3:
+                    x = augmentation.cutout(x, scale=2.5)
+                elif n_parameter == 4:
+                    x = augmentation.cutout(x, scale=3.0)
+                elif n_parameter == 5:
+                    x = augmentation.cutout(x, scale=5.0)
+
+            elif num_aug == 3:
+                if n_parameter == 1:
+                    x = augmentation.cutout(x, scale=1.5)
+                elif n_parameter == 2:
+                    x = augmentation.cutout(x, scale=2.0)
+                elif n_parameter == 3:
+                    x = augmentation.cutout(x, scale=2.5)
 
     elif flag_als == 5:
         if n_aug == 1:
             x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=1.0)
         elif n_aug == 2:
             x = augmentation.cutout(x, scale=2)
+        elif n_aug == 3:
+            x = augmentation.random_translation(x)
+
+    elif flag_als == 6:
+        if num_aug == 6:
+            if n_parameter == 1:
+                x = augmentation.cutout(x, scale=1.5)
+            elif n_parameter == 2:
+                x = augmentation.cutout(x, scale=2.0)
+            elif n_parameter == 3:
+                x = augmentation.cutout(x, scale=2.5)
+            elif n_parameter == 4:
+                x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=0.2)
+            elif n_parameter == 5:
+                x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=0.5)
+            elif n_parameter == 6:
+                x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=1.0)
+
+        elif num_aug == 5:
+            if n_parameter == 1:
+                x = augmentation.cutout(x, scale=1.5)
+            elif n_parameter == 2:
+                x = augmentation.cutout(x, scale=2.0)
+            elif n_parameter == 3:
+                x = augmentation.cutout(x, scale=2.5)
+            elif n_parameter == 4:
+                x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=0.2)
+            elif n_parameter == 5:
+                x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=1.0)
+
+        elif num_aug == 4:
+            if n_parameter == 1:
+                x = augmentation.cutout(x, scale=1.5)
+            elif n_parameter == 2:
+                x = augmentation.cutout(x, scale=2.0)
+            elif n_parameter == 3:
+                x = augmentation.cutout(x, scale=2.5)
+            elif n_parameter == 4:
+                x, y = augmentation.mixup(image=x, label=y, num_classes=num_classes, alpha=1.0)
 
     if flag_save_images == 1:
         save_images(x, n_aug)

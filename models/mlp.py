@@ -13,25 +13,19 @@ class MLPNet(nn.Module):
 
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, num_classes)
+        self.fc2 = nn.Linear(hidden_size, num_classes)
 
-    def forward(self, x, y, n_aug=0, layer_aug=0, flag_save_images=0, flag_als=0, n_parameter=0):
+    def forward(self, x, y, n_aug=0, num_aug=0, layer_aug=0, flag_save_images=0, flag_als=0, n_parameter=0):
         if x.ndim > 2:
             x = x.reshape(x.size(0), -1)
 
         if n_aug >= 1 and layer_aug == 0:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
         x = self.fc1(x)
         x = self.relu(x)
 
         if n_aug >= 1 and layer_aug == 1:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
         x = self.fc2(x)
-        x = self.relu(x)
-
-        if n_aug >= 1 and layer_aug == 2:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-        x = self.fc3(x)
 
         return x, y  # all the outputs must be the type of tensor
