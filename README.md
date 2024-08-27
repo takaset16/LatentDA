@@ -5,9 +5,7 @@
 [Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
 
 ## How to Use
-Run.sh (run on interactive node) or run_cifar10_full1.sh (batch job) with ABCI
-
-ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh(バッチジョブ)を実行  
+run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
 
 ## Settings 
 --n_model ニューラルネットワークモデル   
