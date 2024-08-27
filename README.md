@@ -1,13 +1,15 @@
-**Paper**  
-
-[Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
-
-
 # LatentDA
 
+
+## Paper
+[Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
+
+## How to Use
+Run.sh (run on interactive node) or run_cifar10_full1.sh (batch job) with ABCI
+
 ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh(バッチジョブ)を実行  
-  
-**Settings**  
+
+## Settings 
 --n_model ニューラルネットワークモデル   
 --n_data データセット  
 --num_epochs エポック数  
@@ -30,8 +32,3 @@ ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh
 --flag_defaug 入力データにデフォルトでDAを加える場合1(default:1)  
 --flag_sign ALSおよびGradient descent ALSでsign関数を利用する場合1 (default: 0)  
   
-  
-**--n_aug 9でガウシアンノイズ</span>**  
-  
-**--flag_wandb 1でweights and biases利用**  
-wandb login  
