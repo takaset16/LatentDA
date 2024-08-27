@@ -15,7 +15,7 @@ run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
 --num_samples: number of training samples (default:0)  
 --n_aug: kind of data augmentation (0: no data augmentation)  
 --flag_random_layer: 1 for randomly selecting DA layers  
---flag_adalase: 1 for AdaLASE 
+--flag_adalase: 1 for AdaLASE  
 --als_rate AdaLASEの更新の係数  
 --flag_adversarial adversarialにする場合1  
 --epoch_random 学習開始後何エポックの間ランダムにDA層を選ぶかの指定  
