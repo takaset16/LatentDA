@@ -8,14 +8,14 @@
 run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
 
 ## Settings 
---n_model ニューラルネットワークモデル   
---n_data データセット  
---num_epochs エポック数  
---batch_size_training 学習時のバッチサイズ  
---num_samples 利用する訓練サンプル数 (0で全データ利用)(default:0)  
---n_aug Data augmentationの種類 (0でDAなし)  
---flag_random_layer ALSを行わず、ランダムにDA層を選ぶ場合1  
---flag_als AdaLASEの指定 (0でALS行わない, 1で通常ALS, 2でnaive, 3でgreedy, 4でgreedy(temp付き), 5でgradient descent)  
+--n_model: neural network model   
+--n_data: dataset  
+--num_epochs: number of training epochs  
+--batch_size_training: batch size during training  
+--num_samples: number of training samples (default:0)  
+--n_aug: kind of data augmentation (0: no data augmentation)  
+--flag_random_layer: 1 for randomly selecting DA layers  
+--flag_adalase: 1 for AdaLASE 
 --als_rate AdaLASEの更新の係数  
 --flag_adversarial adversarialにする場合1  
 --epoch_random 学習開始後何エポックの間ランダムにDA層を選ぶかの指定  
