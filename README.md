@@ -1,4 +1,4 @@
-# LatentDA
+# Latent Data Augmentation
 
 
 ## Paper
