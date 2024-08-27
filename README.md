@@ -5,7 +5,7 @@
 [Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
 
 ## How to Use
-run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
+Run run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
 
 ## Settings 
 --n_model: neural network model   
@@ -16,7 +16,7 @@ run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
 --n_aug: kind of data augmentation (0: no data augmentation)  
 --flag_random_layer: 1 for randomly selecting DA layers  
 --flag_adalase: 1 for AdaLASE  
---als_rate AdaLASEの更新の係数  
+--initial_als_rate: a hyperparameter for AdaLASE  
 --flag_adversarial adversarialにする場合1  
 --epoch_random 学習開始後何エポックの間ランダムにDA層を選ぶかの指定  
 --iter_interval ステップ平均を計算するステップ数  
