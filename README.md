@@ -1,3 +1,6 @@
+[Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
+
+
 # LatentDA
 
 ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh(バッチジョブ)を実行  
