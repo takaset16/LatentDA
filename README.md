@@ -1,3 +1,5 @@
+**Paper**  
+
 [Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
 
 
@@ -5,7 +7,7 @@
 
 ABCIでrun.sh(インタラクティブノードで実行)かrun_cifar10_full1.sh(バッチジョブ)を実行  
   
-**[よく変更する設定]**  
+**Settings**  
 --n_model ニューラルネットワークモデル   
 --n_data データセット  
 --num_epochs エポック数  
