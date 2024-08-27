@@ -5,7 +5,7 @@
 [Optimal Layer Selection for Latent Data Augmentation](https://arxiv.org/abs/2408.13426)
 
 ## How to Use
-Run run.sh (interactive job) or run_sweep1.sh (batch job) on ABCI
+Run run.sh (interactive job) or run_sweep001.sh (batch job) on ABCI
 
 ## Settings 
 --n_model: neural network model   
