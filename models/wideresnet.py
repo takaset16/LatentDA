@@ -48,11 +48,10 @@ class WideBasic(nn.Module):
 
 
 class WideResNet(nn.Module):
-    def __init__(self, depth, widen_factor, dropout_rate, num_classes, num_channel, n_aug):
+    def __init__(self, depth, widen_factor, dropout_rate, num_classes, num_channel):
         super(WideResNet, self).__init__()
         self.in_planes = 16
         self.num_classes = num_classes
-        self.n_aug = n_aug
 
         assert ((depth - 4) % 6 == 0), 'Wide-resnet depth should be 6n+4'
         n = int((depth - 4) / 6)
@@ -78,35 +77,32 @@ class WideResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, n_aug=0, layer_aug=0, flag_save_images=0, n_parameter=0):
+    def forward(self, x, y, num_layer=0, n_aug=0, layer_aug=0, param_aug=0):
         if n_aug >= 1 and layer_aug == 0:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
         x = self.conv1(x)
 
         if n_aug >= 1 and layer_aug == 1:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
         x = self.layer1(x)
 
         if n_aug >= 1 and layer_aug == 2:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
         x = self.layer2(x)
 
         if n_aug >= 1 and layer_aug == 3:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
         x = self.layer3(x)
 
         if n_aug >= 1 and layer_aug == 4:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
         x = F.relu(self.bn1(x))
 
         if n_aug >= 1 and layer_aug == 5:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
         # x = F.avg_pool2d(x, 8)
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = x.view(x.size(0), -1)
         x = self.linear(x)
 
-        if n_aug >= 1 and layer_aug == 6:
-            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, flag_save_images, n_parameter)
-
-        return x, y, layer_aug
+        return x, y

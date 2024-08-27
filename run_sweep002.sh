@@ -13,7 +13,6 @@ module load python/3.11/3.11.2
 module load cuda/11.6/11.6.2
 module load cudnn/8.9/8.9.1
 
-wandb agent takase16/ViT_001/2b1n933v
+wandb agent takase16/AdaLASE_029_CIFAR10/8c211rl1
 
 deactivate
-

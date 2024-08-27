@@ -1,217 +1,134 @@
 # coding: utf-8
-# https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/networks/resnet.py
-
+# https://qiita.com/tchih11/items/377cbf9162e78a639958
+import torch
 import torch.nn as nn
-import math
-import numpy as np
 import util
 
 
-def conv3x3(in_planes, out_planes, stride=1):
-    "3x3 convolution with padding"
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
+class block(nn.Module):
+    def __init__(self, first_conv_in_channels, first_conv_out_channels, identity_conv=None, stride=1):
+        """
+        ??????????????
+        Args:
+            first_conv_in_channels : 1???conv??1×1??input channel?
+            first_conv_out_channels : 1???conv??1×1??output channel?
+            identity_conv : channel?????conv?
+            stride : 3×3conv?????stide??size??????????2???
+        """
+        super(block, self).__init__()
 
+        # 1???conv??1×1?
+        self.conv1 = nn.Conv2d(
+            first_conv_in_channels, first_conv_out_channels, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(first_conv_out_channels)
 
-class BasicBlock(nn.Module):
-    expansion = 1
+        # 2???conv??3×3?
+        # ????3???size?????????stride???
+        self.conv2 = nn.Conv2d(
+            first_conv_out_channels, first_conv_out_channels, kernel_size=3, stride=stride, padding=1)
+        self.bn2 = nn.BatchNorm2d(first_conv_out_channels)
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
+        # 3???conv??1×1?
+        # output channel?input channel?4????
+        self.conv3 = nn.Conv2d(
+            first_conv_out_channels, first_conv_out_channels*4, kernel_size=1, stride=1, padding=0)
+        self.bn3 = nn.BatchNorm2d(first_conv_out_channels*4)
+        self.relu = nn.ReLU()
 
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-
-class Bottleneck(nn.Module):
-    expansion = 4
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(Bottleneck, self).__init__()
-
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, planes * Bottleneck.expansion, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes * Bottleneck.expansion)
-        self.relu = nn.ReLU(inplace=True)
-
-        self.downsample = downsample
-        self.stride = stride
+        # identity?channel???????????conv??1×1???????????None
+        self.identity_conv = identity_conv
 
     def forward(self, x):
-        residual = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+        identity = x.clone()  # ???????
 
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
+        x = self.conv1(x)  # 1×1?????
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.conv2(x)  # 3×3??????????3???stride?2?????????size???????
+        x = self.bn2(x)
+        x = self.relu(x)
+        x = self.conv3(x)  # 1×1?????
+        x = self.bn3(x)
 
-        out = self.conv3(out)
-        out = self.bn3(out)
-        if self.downsample is not None:
-            residual = self.downsample(x)
+        # ??????conv??1×1?????identity?channel??????????
+        if self.identity_conv is not None:
+            identity = self.identity_conv(identity)
+        x += identity
 
-        out += residual
-        out = self.relu(out)
+        x = self.relu(x)
 
-        return out
+        return x
 
 
 class ResNet(nn.Module):
-    def __init__(self, depth, num_classes, num_channel, n_data, bottleneck=False):
+    def __init__(self, block, num_classes, num_channel=3):
         super(ResNet, self).__init__()
         self.num_classes = num_classes
-        self.n_data = n_data
 
-        if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100' or self.n_data == 'SVHN':
-            self.inplanes = 16
-            print(bottleneck)
-            if bottleneck == True:
-                n = int((depth - 2) / 9)
-                block = Bottleneck
-            else:
-                n = int((depth - 2) / 6)
-                block = BasicBlock
+        # conv1???????????????
+        self.conv1 = nn.Conv2d(num_channel, 64, kernel_size=7, stride=2, padding=3)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU()
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-            self.conv1 = nn.Conv2d(num_channel, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-            self.bn1 = nn.BatchNorm2d(self.inplanes)
-            self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
-            self.relu = nn.ReLU(inplace=True)
-            self.layer1 = self._make_layer(block, 16, n)
-            self.layer2 = self._make_layer(block, 32, n, stride=2)
-            self.layer3 = self._make_layer(block, 64, n, stride=2)
-            # self.avgpool = nn.AvgPool2d(8)
-            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(64 * block.expansion, num_classes)
-            self.dropout = nn.Dropout(inplace=False)
+        # conv2_x??????????????stride?1
+        self.conv2_x = self._make_layer(block, 3, res_block_in_channels=64, first_conv_out_channels=64, stride=1)
 
-        elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-            blocks = {18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck, 152: Bottleneck, 200: Bottleneck}
-            layers = {18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], 200: [3, 24, 36, 3]}
-            assert layers[depth], 'invalid detph for ResNet (depth should be one of 18, 34, 50, 101, 152, and 200)'
+        # conv3_x????????????????????stride?2
+        self.conv3_x = self._make_layer(block, 4, res_block_in_channels=256,  first_conv_out_channels=128, stride=2)
+        self.conv4_x = self._make_layer(block, 6, res_block_in_channels=512,  first_conv_out_channels=256, stride=2)
+        self.conv5_x = self._make_layer(block, 3, res_block_in_channels=1024, first_conv_out_channels=512, stride=2)
 
-            self.inplanes = 64
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-            self.bn1 = nn.BatchNorm2d(64)
-            self.bn1_notrack = nn.BatchNorm2d(32, track_running_stats=False)
-            self.relu = nn.ReLU(inplace=True)
-            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-            self.layer1 = self._make_layer(blocks[depth], 64, layers[depth][0])
-            self.layer2 = self._make_layer(blocks[depth], 128, layers[depth][1], stride=2)
-            self.layer3 = self._make_layer(blocks[depth], 256, layers[depth][2], stride=2)
-            self.layer4 = self._make_layer(blocks[depth], 512, layers[depth][3], stride=2)
-            # self.avgpool = nn.AvgPool2d(7)
-            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(512 * blocks[depth].expansion, num_classes)
-            self.dropout = nn.Dropout(inplace=False)
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.fc = nn.Linear(512*4, num_classes)
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def _make_layer(self, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
+    def _make_layer(self, block, num_res_blocks, res_block_in_channels, first_conv_out_channels, stride):
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+
+        # 1???????????channel?????size???????
+        # identify?????1×1?conv??????????????????stride?2???
+        identity_conv = nn.Conv2d(res_block_in_channels, first_conv_out_channels*4, kernel_size=1,stride=stride)
+        layers.append(block(res_block_in_channels, first_conv_out_channels, identity_conv, stride))
+
+        # 2?????input_channel??1???output_channel?4?
+        in_channels = first_conv_out_channels*4
+
+        # channel???size???????????identity_conv?None?stride?1
+        for i in range(num_res_blocks - 1):
+            layers.append(block(in_channels, first_conv_out_channels, identity_conv=None, stride=1))
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, y, n_aug=0, num_aug=0, layer_aug=0, flag_save_images=0, flag_als=0, n_parameter=0):
-        if self.n_data == 'CIFAR-10' or self.n_data == 'CIFAR-100' or self.n_data == 'SVHN':
-            if n_aug >= 1 and layer_aug == 0:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x = self.relu(x)
+    def forward(self, x, y, num_layer=0, n_aug=0, layer_aug=0, param_aug=0):
+        if n_aug >= 1 and layer_aug == 0:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
 
-            if n_aug >= 1 and layer_aug == 1:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer1(x)
+        x = self.conv1(x)   # in:(3,224*224)?out:(64,112*112)
+        x = self.bn1(x)     # in:(64,112*112)?out:(64,112*112)
+        x = self.relu(x)    # in:(64,112*112)?out:(64,112*112)
+        x = self.maxpool(x) # in:(64,112*112)?out:(64,56*56)
 
-            if n_aug >= 1 and layer_aug == 2:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer2(x)
+        if n_aug >= 1 and layer_aug == 1:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
+        x = self.conv2_x(x)  # in:(64,56*56)  ?out:(256,56*56)
 
-            if n_aug >= 1 and layer_aug == 3:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer3(x)
+        if n_aug >= 1 and layer_aug == 2:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
+        x = self.conv3_x(x)  # in:(256,56*56) ?out:(512,28*28)
 
-            if n_aug >= 1 and layer_aug == 4:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.avgpool(x)
-            x = x.view(x.size(0), -1)
-            x = self.fc(x)
+        if n_aug >= 1 and layer_aug == 3:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
+        x = self.conv4_x(x)  # in:(512,28*28) ?out:(1024,14*14)
 
-        elif self.n_data == 'ImageNet' or self.n_data == 'TinyImageNet':
-            if n_aug >= 1 and layer_aug == 0:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x = self.relu(x)
-            x = self.maxpool(x)
+        if n_aug >= 1 and layer_aug == 4:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
+        x = self.conv5_x(x)  # in:(1024,14*14)?out:(2048,7*7)
 
-            if n_aug >= 1 and layer_aug == 1:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer1(x)
-
-            if n_aug >= 1 and layer_aug == 2:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer2(x)
-
-            if n_aug >= 1 and layer_aug == 3:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer3(x)
-
-            if n_aug >= 1 and layer_aug == 4:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.layer4(x)
-
-            if n_aug >= 1 and layer_aug == 5:
-                x, y = util.run_n_aug(x, y, n_aug, num_aug, self.num_classes, flag_save_images, flag_als, n_parameter)
-            x = self.avgpool(x)
-            x = x.view(x.size(0), -1)
-            x = self.fc(x)
+        if n_aug >= 1 and layer_aug == 5:
+            x, y = util.run_n_aug(x, y, n_aug, self.num_classes, param_aug)
+        x = self.avgpool(x)
+        x = x.reshape(x.shape[0], -1)
+        x = self.fc(x)
 
         return x, y

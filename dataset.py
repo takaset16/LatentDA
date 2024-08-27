@@ -5,7 +5,6 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import ConcatDataset
-from RandAugment import RandAugment
 from PIL import Image
 import util
 
@@ -38,7 +37,7 @@ class DataSetXY(Dataset):
 
 
 class MyDataset_training(Dataset):
-    def __init__(self, n_data, num_data, seed, flag_randaug, rand_n, rand_m, cutout, flag_defaug):
+    def __init__(self, n_data, flag_defaug, flag_transfer):
         self.sampler = None
 
         """データの前処理"""
@@ -50,12 +49,20 @@ class MyDataset_training(Dataset):
             ])
         elif n_data == 'CIFAR-10' or n_data == 'CIFAR-100':
             if flag_defaug == 1:
-                transform_train = transforms.Compose([
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))  # Comment out if you save images
-                ])
+                if flag_transfer == 1:  # transfer learning
+                    transform_train = transforms.Compose([
+                        transforms.RandomResizedCrop(224),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                    ])
+                else:
+                    transform_train = transforms.Compose([
+                        transforms.RandomCrop(32, padding=4),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))  # Comment out if you save images
+                    ])
             else:
                 transform_train = transforms.Compose([
                     transforms.ToTensor(),
@@ -84,18 +91,31 @@ class MyDataset_training(Dataset):
                 # transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
             ])
         elif n_data == 'ImageNet':
-            transform_train = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(
-                    brightness=0.4,
-                    contrast=0.4,
-                    saturation=0.4,
-                ),
-                transforms.ToTensor(),
-                Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
+            if flag_defaug == 1:
+                transform_train = transforms.Compose([
+                    transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ColorJitter(
+                        brightness=0.4,
+                        contrast=0.4,
+                        saturation=0.4,
+                    ),
+                    transforms.ToTensor(),
+                    Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+            else:
+                transform_train = transforms.Compose([
+                    transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
+                    transforms.ColorJitter(
+                        brightness=0.4,
+                        contrast=0.4,
+                        saturation=0.4,
+                    ),
+                    transforms.ToTensor(),
+                    Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
         elif n_data == 'TinyImageNet':
             transform_train = transforms.Compose([
                 transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
@@ -109,14 +129,30 @@ class MyDataset_training(Dataset):
                 Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
+        elif n_data == 'EMG':
+            train_x = np.zeros((624 * 25, 50 * 8))
+            train_y = np.zeros(624 * 25)
 
-        """Cutout"""
-        if cutout == 1:
-            transform_train.transforms.append(CutoutDefault(cutout))
+            for s in range(25):  # 被験者数
+                DATA_PATH = "../../../../groups/gac50437/datasets/EMG/features_raw/raw_data_MyoDataset/sub{:02}/training_data.mat"
+                LABEL_PATH = "../../../../groups/gac50437/datasets/EMG/features_raw/raw_data_MyoDataset/sub{:02}/training_label.mat"
 
-        """RandAugment"""
-        if flag_randaug == 1:
-            transform_train.transforms.insert(0, RandAugment(rand_n, rand_m, n_data))
+                training_data = sio.loadmat(DATA_PATH.format(s + 1))["training_data"]
+                training_label = sio.loadmat(LABEL_PATH.format(s + 1))["training_label"]
+                training_label = training_label - 1
+
+                train_x[s * 624] = training_data.reshape((training_data.shape[0], training_data.shape[1] * training_data.shape[2]))
+                train_y[s * 624] = training_label.reshape(training_label.shape[0])
+
+                print(train_x.shape)
+
+                """
+                train_x = np.loadtxt("../../datasets/uci/letter/input_data.csv", delimiter=',', dtype=np.float32)
+                train_y = np.loadtxt("../../datasets/uci/letter/output_data.csv", delimiter=',', dtype=np.int32)
+                self.mydata = DataSetXY(x=torch.from_numpy(train_x).float(), y=train_y)
+                _, self.mydata = util.make_training_test_data(self.mydata, int(20000 * 0.35), seed)
+                """
+            self.mydata = DataSetXY(x=torch.from_numpy(train_x).float(), y=train_y)
 
         """データ選択"""
         if n_data == 'MNIST':
@@ -128,43 +164,12 @@ class MyDataset_training(Dataset):
             # trainset = torchvision.datasets.SVHN(root='../../datasets/svhn', split='train', transform=transform_train, download=True)
             # extraset = torchvision.datasets.SVHN(root='../../datasets/svhn', split='extra', transform=transform_train, download=True)
             # self.mydata = ConcatDataset([trainset, extraset])
-        elif n_data == 'STL-10':  # STL-10
-            self.mydata = torchvision.datasets.STL10(root='../../datasets/stl10', split='train', transform=transform_train, download=True)
         elif n_data == 'CIFAR-100':  # CIFAR-100
             self.mydata = torchvision.datasets.CIFAR100(root='../../datasets/cifar100', train=True, transform=transform_train, download=True)
-        elif n_data == 'EMNIST':  # EMNIST
-            self.mydata = torchvision.datasets.EMNIST('../../datasets/emnist', split='balanced', train=True, transform=transforms.ToTensor(), download=True)
-        elif n_data == 'Coil-20-proc':  # Coil-20-proc
-            self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/coil-20-proc', transform=transforms.ToTensor())
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
             self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=True, transform=transform_train, download=True)
         elif n_data == 'ImageNet':  # ImageNet
             self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/train', transform=transform_train)
-        elif n_data == 'TinyImageNet':  # TinyImageNet
-            # self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/train', transform=transform_train)
-            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/tiny-imagenet-200/train', transform=transform_train)
-        elif n_data == 'Letter':  # Letter Recognition
-            train_x = np.loadtxt("../../datasets/uci/letter/input_data.csv", delimiter=',', dtype=np.float32)
-            train_y = np.loadtxt("../../datasets/uci/letter/output_data.csv", delimiter=',', dtype=np.int64)
-            self.mydata = DataSetXY(x=train_x, y=train_y)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(20000 * 0.35), seed)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(20000 - 2600), seed)
-        elif n_data == 'Car':  # Car Evaluation
-            train_x = np.loadtxt("../../datasets/uci/Car Evaluation/input_data.csv", delimiter=',', dtype=np.float32)
-            train_y = np.loadtxt("../../datasets/uci/Car Evaluation/output_data.csv", delimiter=',', dtype=np.int64)
-            self.mydata = DataSetXY(x=train_x, y=train_y)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(1728 * 0.35), seed)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(1728 - 400), seed)
-        elif n_data == 'Epileptic':  # Epileptic Seizure
-            train_x = np.loadtxt("../../datasets/uci/Epileptic Seizure/input_data.csv", delimiter=',', dtype=np.float32)
-            train_y = np.loadtxt("../../datasets/uci/Epileptic Seizure/output_data.csv", delimiter=',', dtype=np.int64)
-            self.mydata = DataSetXY(x=train_x, y=train_y)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 * 0.35), seed)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 - 500), seed)
-
-        if num_data != 0:
-        #   self.mydata = util.make_training_data(self.mydata, num_data, seed)
-            self.mydata.data = self.mydata.data[0:num_data]
 
     def __getitem__(self, index):
         x, y = self.mydata[index]
@@ -177,108 +182,52 @@ class MyDataset_training(Dataset):
     def get_info(self, n_data):
         num_channel = 3
         num_classes = 10
-        size_after_cnn = 4
         input_size = 0
         hidden_size = 1000
 
         if n_data == 'MNIST':  # MNIST
             num_channel = 1
             num_classes = 10
-            size_after_cnn = 4
             input_size = 28 * 28 * 1
-            # num_training_data = 60000
-            # num_test_data = 10000
+            num_training_data = 60000
+            num_test_data = 10000
         elif n_data == 'CIFAR-10':  # CIFAR-10
             num_channel = 3
             num_classes = 10
-            size_after_cnn = 5
             input_size = 32 * 32 * 3
-            # num_training_data = 50000
-            # num_test_data = 10000
+            num_training_data = 50000
+            num_test_data = 10000
         elif n_data == 'SVHN':  # SVHN
             num_channel = 3
             num_classes = 10
-            size_after_cnn = 5
             input_size = 32 * 32 * 3
-            # num_training_data = 73257
-            # num_training_data = 73257 + 531131
-            # num_test_data = 26032
-        elif n_data == 'STL-10':  # STL-10
-            num_channel = 3
-            num_classes = 10
-            size_after_cnn = 8  # cnn_stl
-            input_size = 96 * 96 * 3
-            # size_after_cnn = 21  # smallCNN
-            # num_training_data = 5000
-            # num_test_data = 8000
+            num_training_data = 73257
+            num_training_data = 73257 + 531131
+            num_test_data = 26032
         elif n_data == 'CIFAR-100':  # CIFAR-100
             num_channel = 3
             num_classes = 100
-            size_after_cnn = 5
             input_size = 32 * 32 * 3
-            # num_training_data = 50000
-            # num_test_data = 10000
-        elif n_data == 'EMNIST':  # EMNIST
-            num_channel = 1
-            num_classes = 10
-            size_after_cnn = 4
-            input_size = 28 * 28 * 1
-            # num_training_data = 131600  # Balanced
-            # num_test_data = 10000
-        elif n_data == 'COIL-20':  # COIL-20
-            num_channel = 3
-            num_classes = 21
-            size_after_cnn = 4  # cnn_coil
-            input_size = 128 * 128 * 1
-            # size_after_cnn = 29  # small CNN
-            # num_training_data = 1440
-            # num_test_data = 500
+            num_training_data = 50000
+            num_test_data = 10000
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
             num_channel = 1
             num_classes = 10
-            size_after_cnn = 4
             input_size = 28 * 28 * 1
-            # num_training_data = 60000
-            # num_test_data = 10000
+            num_training_data = 60000
+            num_test_data = 10000
         elif n_data == 'ImageNet':  # ImageNet
             num_channel = 3
             num_classes = 1000
             input_size = 224 * 224 * 3  # transform後のサイズ
-            # num_training_data = 1300000
-            # num_test_data = 50000
-        elif n_data == 'TinyImageNet':  # TinyImageNet
-            num_channel = 3
-            num_classes = 200
-            input_size = 224 * 224 * 3  # transform後のサイズ
-            # num_training_data = 100000
-            # num_test_data = 10000
-        elif n_data == 'Letter':  # Letter Recognition
-            num_channel = 1
-            num_classes = 26
-            input_size = 16
-            hidden_size = 1000
-            # num_training_data = 16000
-            # num_test_data = 4000
-        elif n_data == 'Car':  # Car Evaluation
-            num_channel = 1
-            num_classes = 4
-            input_size = 6
-            hidden_size = 1000
-            # num_training_data = 1728 - int(1728 * 0.35)
-            # num_test_data = int(1728 * 0.35)
-        elif n_data == 'Epileptic':  # Epileptic Seizure
-            num_channel = 1
-            num_classes = 5
-            input_size = 178
-            hidden_size = 1000
-            # num_training_data = 11500 - int(11500 * 0.35)
-            # num_test_data = int(11500 * 0.35)
+            num_training_data = 1300000
+            num_test_data = 50000
 
-        return num_channel, num_classes, size_after_cnn, input_size, hidden_size
+        return num_channel, num_classes, input_size, hidden_size, num_training_data
 
 
 class MyDataset_test(Dataset):
-    def __init__(self, n_data):
+    def __init__(self, n_data, flag_transfer):
         self.sampler = None
 
         """データの前処理"""
@@ -289,23 +238,26 @@ class MyDataset_test(Dataset):
                 transforms.Normalize(mean=(0.1307, ), std=(0.3081, ))
             ])
         elif n_data == 'CIFAR-10' or n_data == 'CIFAR-100':
-            transform_test = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010)),
-            ])
+            if flag_transfer == 1:  # transfer learning
+                transform_test = transforms.Compose([
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ])
+            else:
+                transform_test = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010)),
+                ])
         elif n_data == 'SVHN':
             transform_test = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.4376821, 0.4437697, 0.47280442), std=(0.19803012, 0.20101562, 0.19703614))  # Comment out when saving images
             ])
-        if n_data == 'Fashion-MNIST':
+        elif n_data == 'Fashion-MNIST':
             transform_test = transforms.Compose([
                 transforms.ToTensor()
-            ])
-        elif n_data == 'STL-10':
-            transform_test = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
             ])
         elif n_data == 'ImageNet':
             transform_test = transforms.Compose([
@@ -313,15 +265,6 @@ class MyDataset_test(Dataset):
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-        elif n_data == 'TinyImageNet':
-            transform_test = transforms.Compose([
-                # transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
-                # transforms.Scale(256),
-                transforms.Resize(256, interpolation=Image.BICUBIC),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
 
         """データ選択"""
@@ -331,20 +274,12 @@ class MyDataset_test(Dataset):
             self.mydata = torchvision.datasets.CIFAR10(root='../../datasets/cifar10', train=False, transform=transform_test, download=True)
         elif n_data == 'SVHN':  # SVHN
             self.mydata = torchvision.datasets.SVHN(root='../../datasets/svhn', split='test', transform=transform_test, download=True)
-        elif n_data == 'STL-10':  # STL-10
-            self.mydata = torchvision.datasets.STL10(root='../../datasets/stl10', split='test', transform=transform_test, download=True)
         elif n_data == 'CIFAR-100':  # CIFAR-100
             self.mydata = torchvision.datasets.CIFAR100(root='../../datasets/cifar100', train=False, transform=transform_test, download=True)
-        elif n_data == 'EMNIST':  # EMNIST
-            self.mydata = torchvision.datasets.EMNIST('../../datasets/emnist', split='balanced', train=False, transform=transforms.ToTensor(), download=True)
-        elif n_data == 'COIL-20-proc':  # COIL-20-proc(training data)
-            self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/coil-20-proc', transform=transforms.ToTensor())
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
             self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=False, transform=transform_test, download=True)
         elif n_data == 'ImageNet':  # ImageNet
             self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/val', transform=transform_test)
-        elif n_data == 'TinyImageNet':  # TinyImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/val', transform=transform_test)
 
     def __getitem__(self, index):
         x, y = self.mydata[index]
@@ -356,149 +291,108 @@ class MyDataset_test(Dataset):
 
 
 class MyDataset_als(Dataset):
-    def __init__(self, n_data, num_data, seed, flag_randaug, rand_n, rand_m, cutout, flag_defaug):
+    def __init__(self, n_data, flag_defaug, flag_transfer, degree=10):
         self.sampler = None
 
         """データの前処理"""
-        transform_train = None
+        transform_als = None
         if n_data == 'MNIST':
-            transform_train = transforms.Compose([
-                transforms.RandomRotation(degrees=10),
+            transform_als = transforms.Compose([
+                transforms.RandomRotation(degrees=degree),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.1307, ), std=(0.3081, ))
             ])
         elif n_data == 'CIFAR-10' or n_data == 'CIFAR-100':
             if flag_defaug == 1:
-                transform_train = transforms.Compose([
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(degrees=30),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
-                ])
+                if flag_transfer == 1:  # transfer learning
+                    transform_als = transforms.Compose([
+                        transforms.RandomResizedCrop(224),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomRotation(degrees=degree),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                    ])
+                else:
+                    transform_als = transforms.Compose([
+                        transforms.RandomCrop(32, padding=4),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomRotation(degrees=degree),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
+                    ])
             else:
-                transform_train = transforms.Compose([
-                    transforms.RandomRotation(degrees=30),
+                transform_als = transforms.Compose([
+                    transforms.RandomRotation(degrees=degree),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
                 ])
         elif n_data == 'SVHN':
             if flag_defaug == 1:
-                transform_train = transforms.Compose([
+                transform_als = transforms.Compose([
                     transforms.RandomCrop(32, padding=4),
                     transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(degrees=10),
+                    transforms.RandomRotation(degrees=degree),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4376821, 0.4437697, 0.47280442), std=(0.19803012, 0.20101562, 0.19703614))
                 ])
             else:
-                transform_train = transforms.Compose([
-                    transforms.RandomRotation(degrees=10),
+                transform_als = transforms.Compose([
+                    transforms.RandomRotation(degrees=degree),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.4376821, 0.4437697, 0.47280442), std=(0.19803012, 0.20101562, 0.19703614))
                 ])
         elif n_data == 'Fashion-MNIST':
-            transform_train = transforms.Compose([
+            transform_als = transforms.Compose([
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
-                transforms.RandomRotation(degrees=10),
+                transforms.RandomRotation(degrees=degree),
                 transforms.ToTensor()
             ])
-        elif n_data == 'STL-10':
-            transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomRotation(degrees=10),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-            ])
         elif n_data == 'ImageNet':
-            transform_train = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
-                transforms.RandomRotation(degrees=10),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(
-                    brightness=0.4,
-                    contrast=0.4,
-                    saturation=0.4,
-                ),
-                transforms.ToTensor(),
-                Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-        elif n_data == 'TinyImageNet':
-            transform_train = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
-                transforms.RandomRotation(degrees=10),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(
-                    brightness=0.4,
-                    contrast=0.4,
-                    saturation=0.4,
-                ),
-                transforms.ToTensor(),
-                Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-
-        """Cutout"""
-        if cutout == 1:
-            transform_train.transforms.append(CutoutDefault(cutout))
-
-        """RandAugment"""
-        if flag_randaug == 1:
-            transform_train.transforms.insert(0, RandAugment(rand_n, rand_m, n_data))
+            if flag_defaug == 1:
+                transform_als = transforms.Compose([
+                    transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ColorJitter(
+                        brightness=0.4,
+                        contrast=0.4,
+                        saturation=0.4,
+                    ),
+                    transforms.RandomRotation(degrees=degree),
+                    transforms.ToTensor(),
+                    Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+            else:
+                transform_als = transforms.Compose([
+                    transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
+                    transforms.ColorJitter(
+                        brightness=0.4,
+                        contrast=0.4,
+                        saturation=0.4,
+                    ),
+                    transforms.RandomRotation(degrees=degree),
+                    transforms.ToTensor(),
+                    Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
 
         """データ選択"""
         if n_data == 'MNIST':
-            self.mydata = torchvision.datasets.MNIST(root='../../datasets/mnist', train=True, transform=transform_train, download=True)
+            self.mydata = torchvision.datasets.MNIST(root='../../datasets/mnist', train=True, transform=transform_als, download=True)
         elif n_data == 'CIFAR-10':  # CIFAR-10
-            self.mydata = torchvision.datasets.CIFAR10(root='../../datasets/cifar10', train=True, transform=transform_train, download=True)
+            self.mydata = torchvision.datasets.CIFAR10(root='../../datasets/cifar10', train=True, transform=transform_als, download=True)
         elif n_data == 'SVHN':  # SVHN
-            if num_data != 0:  # 少数データ使用時
-                self.mydata = torchvision.datasets.SVHN(root='../../datasets/svhn', split='train', transform=transform_train, download=True)  # only train data
-            else:
-                self.mydata = torchvision.datasets.SVHN(root='../../datasets/svhn', split='train', transform=transform_train, download=True)
-                # trainset = torchvision.datasets.SVHN(root='../../datasets/svhn', split='train', transform=transform_train, download=True)
-                # extraset = torchvision.datasets.SVHN(root='../../datasets/svhn', split='extra', transform=transform_train, download=True)
-                # self.mydata = ConcatDataset([trainset, extraset])
-        elif n_data == 'STL-10':  # STL-10
-            self.mydata = torchvision.datasets.STL10(root='../../datasets/stl10', split='train', transform=transform_train, download=True)
+            self.mydata = torchvision.datasets.SVHN(root='../../datasets/svhn', split='train', transform=transform_als, download=True)
+            # trainset = torchvision.datasets.SVHN(root='../../datasets/svhn', split='train', transform=transform_als, download=True)
+            # extraset = torchvision.datasets.SVHN(root='../../datasets/svhn', split='extra', transform=transform_als, download=True)
+            # self.mydata = ConcatDataset([trainset, extraset])
         elif n_data == 'CIFAR-100':  # CIFAR-100
-            self.mydata = torchvision.datasets.CIFAR100(root='../../datasets/cifar100', train=True, transform=transform_train, download=True)
-        elif n_data == 'EMNIST':  # EMNIST
-            self.mydata = torchvision.datasets.EMNIST('../../datasets/emnist', split='balanced', train=True, transform=transforms.ToTensor(), download=True)
-        elif n_data == 'Coil-20-proc':  # Coil-20-proc
-            self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/coil-20-proc', transform=transforms.ToTensor())
+            self.mydata = torchvision.datasets.CIFAR100(root='../../datasets/cifar100', train=True, transform=transform_als, download=True)
         elif n_data == 'Fashion-MNIST':  # Fashion-MNIST
-            self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=True, transform=transform_train, download=True)
+            self.mydata = torchvision.datasets.FashionMNIST(root='../../datasets/FashionMNIST', train=True, transform=transform_als, download=True)
         elif n_data == 'ImageNet':  # ImageNet
-            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/val', transform=transform_train)
-        elif n_data == 'TinyImageNet':  # TinyImageNet
-            # self.mydata = torchvision.datasets.ImageFolder(root='../../datasets/tiny-imagenet-200/val', transform=transform_test)
-            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/tiny-imagenet-200/val', transform=transform_train)
-        elif n_data == 'Letter':  # Letter Recognition
-            train_x = np.loadtxt("../../datasets/uci/letter/input_data.csv", delimiter=',', dtype=np.float32)
-            train_y = np.loadtxt("../../datasets/uci/letter/output_data.csv", delimiter=',', dtype=np.int64)
-            self.mydata = DataSetXY(x=train_x, y=train_y)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(20000 * 0.35), seed)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(20000 - 2600), seed)
-        elif n_data == 'Car':  # Car Evaluation
-            train_x = np.loadtxt("../../datasets/uci/Car Evaluation/input_data.csv", delimiter=',', dtype=np.float32)  # 訓練データをロード
-            train_y = np.loadtxt("../../datasets/uci/Car Evaluation/output_data.csv", delimiter=',', dtype=np.int64)  # 訓練データをロード
-            self.mydata = DataSetXY(x=train_x, y=train_y)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(1728 * 0.35), seed)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(1728 - 400), seed)
-        elif n_data == 'Epileptic':  # Epileptic Seizure
-            train_x = np.loadtxt("../../datasets/uci/Epileptic Seizure/input_data.csv", delimiter=',', dtype=np.float32)  # 訓練データをロード
-            train_y = np.loadtxt("../../datasets/uci/Epileptic Seizure/output_data.csv", delimiter=',', dtype=np.int64)  # 訓練データをロード
-            self.mydata = DataSetXY(x=train_x, y=train_y)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 * 0.35), seed)
-            # self.mydata, _ = util.make_training_test_data(self.mydata, int(11500 - 500), seed)
-
-        if num_data != 0:
-        #   self.mydata = util.make_training_data(self.mydata, num_data, seed)
-            self.mydata.data = self.mydata.data[0:num_data]
+            self.mydata = torchvision.datasets.ImageFolder(root='../../../../../groups/gac50437/datasets/Imagenet/train', transform=transform_als)
 
     def __getitem__(self, index):
         x, y = self.mydata[index]

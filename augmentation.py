@@ -1,20 +1,23 @@
 # coding: utf-8
 import numpy as np
-import cv2
 from scipy.ndimage.interpolation import rotate
 import torch
 import util
 
 
-def random_noise(image, noise_scale = 0.001):
+def random_noise(image):
+    mean = 0
+    var = 0.1
+    sigma = var ** 0.5
+
     if image.ndim == 4:
         n, c, h, w = image.shape
-        noise = torch.normal(mean=0, std=1, size=(n, c, h, w))
+        noise = torch.normal(mean=mean, std=sigma, size=(n, c, h, w))
     elif image.ndim == 2:
         n, w = image.shape
-        noise = torch.normal(mean=0, std=1, size=(n, w))
+        noise = torch.normal(mean=mean, std=sigma, size=(n, w))
 
-    image = image + util.to_device((noise_scale * noise).float())
+    image = image + util.to_device(noise.float())
 
     return image
 
@@ -94,7 +97,10 @@ def random_translation(image):
     return image2
 
 
-def mixup(image, label, num_classes, alpha=1.0):
+def mixup(image, label, num_classes, alpha=0):
+    if alpha == 0:
+        alpha = 1.0
+
     rand_idx = torch.randperm(label.shape[0])
     image2 = image[rand_idx].clone()  # xをシャッフル
     label2 = label[rand_idx].clone()  # yをシャッフル
@@ -117,23 +123,23 @@ def mixup(image, label, num_classes, alpha=1.0):
     return x_mixed, y_soft
 
 
-def cutout(image, scale=2):
-    image2 = image.clone()  # 元の画像を書き換えるので、コピーしておく
+def cutout(image, scale=0):
+    if scale == 0:
+        scale = 2.0
 
-    if image2.ndim == 4:
-        n, _, h, w = image2.shape
-        mask_size = int(h // scale)  # //を使って整数値が返るようにする
+    image2 = image.clone()  # 元の画像を書き換えるので、コピーしておく
+    mask_value = 0
+
+    if image.ndim == 4:
+        n, _, h, w = image.shape
+        mask_size = int(h // scale)
 
         for i in range(n):
-            mask_value = image2.mean()
-            # マスクをかける場所のtop, leftをランダムに決める
-            # はみ出すことを許すので、0以上ではなく負の値もとる(最大mask_size // 2はみ出す)
             top = np.random.randint(0 - mask_size // 2, h - mask_size // 2)
             left = np.random.randint(0 - mask_size // 2, w - mask_size // 2)
             bottom = top + mask_size
             right = left + mask_size
 
-            # はみ出した場合の処理
             if top < 0:
                 top = 0
             if left < 0:
@@ -143,24 +149,20 @@ def cutout(image, scale=2):
             if right > w:
                 right = w
 
-            image2[i][:, top:bottom, left:right] = mask_value  # マスク部分の画素値を平均値で埋める
+            image2[i][:, top:bottom, left:right] = mask_value
 
-    elif image2.ndim == 2:
-        n, w = image2.shape
-        mask_size = w // scale  # //を使って整数値が返るようにする
-
+    elif image.ndim == 2:
+        n, w = image.shape
+        mask_size = int(w // scale)
         for i in range(n):
-            mask_value = image2.mean()
             left = np.random.randint(0 - mask_size // 2, w - mask_size // 2)
             right = left + mask_size
 
-            # はみ出した場合の処理
             if left < 0:
                 left = 0
             if right > w:
                 right = w
-
-            image2[i][left:right] = mask_value  # マスク部分の画素値を平均値で埋める
+            image2[i][left:right] = mask_value
 
     return image2
 
@@ -231,7 +233,10 @@ def random_erasing(img, p=0.5, sl=0.02, sh=0.4, r1=0.3, r2=3.3):
     return target_img
 """
 
-def cutmix(image, label, num_classes):
+def cutmix(image, label, num_classes, alpha=0):
+    if alpha == 0:
+        alpha = 0.5
+
     rand_idx = torch.randperm(label.shape[0])
     image2 = image[rand_idx].clone()  # xをシャッフル
     label2 = label[rand_idx].clone()  # yをシャッフル
@@ -239,7 +244,6 @@ def cutmix(image, label, num_classes):
     y_one_hot = torch.eye(num_classes, device='cuda')[label]  # one hot表現に変換
     y2_one_hot = torch.eye(num_classes, device='cuda')[label2]  # one hot表現に変換
 
-    alpha = 0.5
     mix_rate = np.random.beta(alpha, alpha, image.shape[0])  # サンプルx1の混ぜ合わせ率を決定
 
     if image2.ndim == 4:
@@ -271,3 +275,4 @@ def ch_contrast(image):
         rate = torch.rand(image.shape[0], image.shape[1], 1, 1) + 0.5  # 0.5 ~ 1.5
 
     return image * util.to_device(rate.float())
+
