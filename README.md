@@ -28,5 +28,5 @@ Run run.sh (interactive job) or run_sweep001.sh (batch job) on ABCI
 --loop: seed for repeated trainings with different initial weights  
 --mean_visual: Width of averaging when displaying value trends  
 --flag_defaug: 1 when using default DA to input  
---flag_sign: 1 when using the sign function on AdaLASE and gradient descent ALS  
+--flag_sign: 1 when using the sign function on AdaLASE and gradient descent AdaLASE   
   
