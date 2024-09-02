@@ -7,6 +7,11 @@
 ## How to Use
 Run run.sh (interactive job) or run_sweep001.sh (batch job) on ABCI
 
+Example
+```
+python3 main.py --n_model 'ResNet18' --n_data 'CIFAR-10' --num_epochs 1 --flag_save_model 1 --flag_layer_rate 0 --flag_adalase 0 --flag_transfer 0 --n_aug 7 --flag_wandb 0 --loop 0
+```
+
 ## Settings 
 --n_model: neural network model   
 --n_data: dataset  
