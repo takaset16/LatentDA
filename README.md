@@ -31,7 +31,6 @@ python3 main.py --n_model 'ResNet50' --n_data 'CIFAR-100' --num_epochs 100 --fla
 --iter_interval: Number of steps to calculate step average in AdaLASE  
 --flag_alstest: 1 if test data is used for AdaLASE calculation, 0 if training data is used  
 --flag_wandb: 1 for weights and biases  
---gpu_multi: 1 for multi-GPU  
 --loop: number for repeated trainings with different initial weights  
 --flag_defaug: 1 when using default DA to input  
   
