@@ -31,7 +31,7 @@ def horizontal_flip(image):
 
     for i in range(n):
         if rand[i] < 0.5:
-            image2[i] = image[i, :, :, reverse]  # 初項image.shape[3] - 1, 末項0, 公差-1の数列を生成
+            image2[i] = image[i, :, :, reverse]
 
     return image2
 
@@ -45,7 +45,7 @@ def vertical_flip(image):
 
     for i in range(n):
         if rand[i] < 0.5:
-            image2[i] = image[i, :, reverse, :]  # 初項image.shape[3] - 1, 末項0, 公差-1の数列を生成
+            image2[i] = image[i, :, reverse, :]
 
     return image2
 
@@ -54,35 +54,33 @@ def random_crop(image):
     n, c, h, w = image.shape
     image2 = torch.zeros(n, c, h, w).cuda()
 
-    # crop_size = (9 * h // 10, 9 * w // 10)
     crop_size = (4 * h // 5, 4 * w // 5)
 
     for i in range(n):
-        # 画像のtop, leftを決める
         top = np.random.randint(0, h - crop_size[0])
         left = np.random.randint(0, w - crop_size[1])
 
-        # top, leftから画像のサイズを足して、bottomとrightを決める
         bottom = top + crop_size[0]
         right = left + crop_size[1]
 
-        # 決めたtop, bottom, left, rightを使って画像を抜き出す
         x = image[i, :, top:bottom, left:right].clone()
         x = x.view(1, x.shape[0], x.shape[1], x.shape[2])
 
-        # もとの画像サイズに拡大
         image2[i] = torch.nn.functional.upsample(x, size=(h, w), mode="bilinear", align_corners=True)
 
     return image2
 
 
 def random_translation(image):
+    r1 = 0.2
+    r2 = 0.2
+
     n, c, h, w = image.shape
     image2 = torch.zeros(n, c, h, w).cuda()
 
     offset = np.random.randint(-h//5, h//5 + 1, size=(n, 2))
-    # offset1 = int(h * 0.2)  # fix
-    # offset2 = int(h * 0.2)  # fix
+    # offset1 = int(h * r1)
+    # offset2 = int(h * r2)
 
     for i in range(n):
         offset1, offset2 = offset[i]
@@ -102,12 +100,12 @@ def mixup(image, label, num_classes, alpha=0):
         alpha = 1.0
 
     rand_idx = torch.randperm(label.shape[0])
-    image2 = image[rand_idx].clone()  # xをシャッフル
-    label2 = label[rand_idx].clone()  # yをシャッフル
+    image2 = image[rand_idx].clone()
+    label2 = label[rand_idx].clone()
 
-    y_one_hot = torch.eye(num_classes, device='cuda')[label]  # one hot表現に変換
-    y2_one_hot = torch.eye(num_classes, device='cuda')[label2]  # one hot表現に変換
-    mix_rate = np.random.beta(alpha, alpha, image.shape[0])  # サンプルx1の混ぜ合わせ率を決定
+    y_one_hot = torch.eye(num_classes, device='cuda')[label]
+    y2_one_hot = torch.eye(num_classes, device='cuda')[label2]
+    mix_rate = np.random.beta(alpha, alpha, image.shape[0])
 
     mix_rate2 = None
     if image.ndim == 2:
@@ -117,7 +115,7 @@ def mixup(image, label, num_classes, alpha=0):
 
     mix_rate = util.to_device(torch.from_numpy(mix_rate.reshape((image.shape[0], 1))).float())
 
-    x_mixed = image.clone() * mix_rate2 + image2.clone() * (1 - mix_rate2)  # サンプルx1のために選ばれたユニットの出力とサンプルx2のために選ばれたユニットの出力の線形補間
+    x_mixed = image.clone() * mix_rate2 + image2.clone() * (1 - mix_rate2)
     y_soft = y_one_hot * mix_rate + y2_one_hot * (1 - mix_rate)
 
     return x_mixed, y_soft
@@ -127,7 +125,7 @@ def cutout(image, scale=0):
     if scale == 0:
         scale = 2.0
 
-    image2 = image.clone()  # 元の画像を書き換えるので、コピーしておく
+    image2 = image.clone()
     mask_value = 0
 
     if image.ndim == 4:
@@ -168,26 +166,20 @@ def cutout(image, scale=0):
 
 
 def random_erasing(image, p=0.5, s=(0.02, 0.4), r=(0.3, 3)):
-    # マスクするかしないか
     if np.random.rand() > p:
        return image
 
-    image2 = image.clone()  # 元の画像を書き換えるので、コピーしておく
+    image2 = image.clone()
 
     n, _, h, w = image2.shape
 
     for i in range(n):
-        # マスクする画素値(0～1)をランダムで決める
         mask_value = np.random.rand()
 
-        # マスクのサイズを元画像のs(0.02~0.4)倍の範囲からランダムに決める
         mask_area = np.random.randint(h * w * s[0], h * w * s[1])
 
-        # マスクのアスペクト比をr(0.3~3)の範囲からランダムに決める
         mask_aspect_ratio = np.random.rand() * r[1] + r[0]
 
-        # マスクのサイズとアスペクト比からマスクの高さと幅を決める
-        # 算出した高さと幅(のどちらか)が元画像より大きくなることがあるので修正する
         mask_height = int(np.sqrt(mask_area / mask_aspect_ratio))
         if mask_height > h - 1:
             mask_height = h - 1
@@ -200,51 +192,23 @@ def random_erasing(image, p=0.5, s=(0.02, 0.4), r=(0.3, 3)):
         bottom = top + mask_height
         right = left + mask_width
 
-        image2[i][:, top:bottom, left:right] = mask_value  # マスク部分の画素値を平均値で埋める
+        image2[i][:, top:bottom, left:right] = mask_value
 
     return image
 
-"""
-def random_erasing(img, p=0.5, sl=0.02, sh=0.4, r1=0.3, r2=3.3):
-    target_img = img.copy()
-
-    if p < np.random.rand():
-        return target_img
-
-    H, W, _ = target_img.shape
-    S = H * W
-
-    while True:
-        Se = np.random.uniform(sl, sh) * S
-        re = np.random.uniform(r1, r2)
-
-        He = int(np.sqrt(Se * re))
-        We = int(np.sqrt(Se / re))
-
-        xe = np.random.randint(0, W)
-        ye = np.random.randint(0, H)
-
-        if xe + We <= W and ye + He <= H:
-            break
-
-    mask = np.random.randint(0, 255, (He, We, 3))
-    target_img[ye:ye + He, xe:xe + We, :] = mask
-
-    return target_img
-"""
 
 def cutmix(image, label, num_classes, alpha=0):
     if alpha == 0:
         alpha = 0.5
 
     rand_idx = torch.randperm(label.shape[0])
-    image2 = image[rand_idx].clone()  # xをシャッフル
-    label2 = label[rand_idx].clone()  # yをシャッフル
+    image2 = image[rand_idx].clone()
+    label2 = label[rand_idx].clone()
 
-    y_one_hot = torch.eye(num_classes, device='cuda')[label]  # one hot表現に変換
-    y2_one_hot = torch.eye(num_classes, device='cuda')[label2]  # one hot表現に変換
+    y_one_hot = torch.eye(num_classes, device='cuda')[label]
+    y2_one_hot = torch.eye(num_classes, device='cuda')[label2]
 
-    mix_rate = np.random.beta(alpha, alpha, image.shape[0])  # サンプルx1の混ぜ合わせ率を決定
+    mix_rate = np.random.beta(alpha, alpha, image.shape[0])
 
     if image2.ndim == 4:
         n, _, h, w = image2.shape
@@ -268,11 +232,42 @@ def cutmix(image, label, num_classes, alpha=0):
     return image2, new_label
 
 
-def ch_contrast(image):
-    if image.ndim == 2:
-        rate = torch.rand(image.shape[0], 1) + 0.5  # 0.5 ~ 1.5
+def random_rotation(image):
+    angle = 30
+
+    size, c, h, w = image.shape
+    image2 = image.clone()
+    image2 = np.array(image2.data.cpu())
+
+    if c == 1:
+        image2 = np.squeeze(image2)
     else:
-        rate = torch.rand(image.shape[0], image.shape[1], 1, 1) + 0.5  # 0.5 ~ 1.5
+        image2 = image2.transpose((0, 2, 3, 1))
+
+    for i in range(size):
+        # angle = np.random.randint(180)
+        image_rotate = rotate(image2[i], angle)
+
+        if c == 1:
+            image2[i] = imresize(image_rotate, (h, w))
+        else:
+            image2[i] = imresize(image_rotate, (h, w, c))
+    if c == 1:
+        image2 = image2[:, np.newaxis, :, :] / 255.0
+    else:
+        image2 = image2.transpose((0, 3, 1, 2)) / 255.0
+
+    image2 = torch.from_numpy(image2).float()
+
+    return image2
+
+
+def ch_contrast(image):
+    a = 0.5
+
+    if image.ndim == 2:
+        rate = torch.rand(image.shape[0], 1) + a
+    else:
+        rate = torch.rand(image.shape[0], image.shape[1], 1, 1) + a
 
     return image * util.to_device(rate.float())
-
