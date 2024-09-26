@@ -178,7 +178,7 @@ class MainNN(object):
                         model.load_state_dict(torch.load("../../../../../groups/gac50437/model_weights/weight_%s_ImageNet_naug%s_seed1001.pth" % (self.n_model, self.n_aug_load)))
                     else:
                         weights = ResNet50_Weights.DEFAULT
-                        model = resnet_transfer.resnet18(weights=weights)
+                        model = resnet_transfer.resnet50(weights=weights)
 
                     model.fc = nn.Linear(model.fc.in_features, self.num_classes)
                     model.num_classes = self.num_classes
